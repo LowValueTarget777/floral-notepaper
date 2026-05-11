@@ -10,7 +10,7 @@ use std::{
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    App, AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
+    App, AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
     WebviewWindowBuilder, Window, WindowEvent,
 };
 use uuid::Uuid;
@@ -26,7 +26,6 @@ const TRAY_QUICK_NOTE_ID: &str = "quick-note";
 const TRAY_TOGGLE_CLOSE_TO_TRAY_ID: &str = "toggle-close-to-tray";
 const TRAY_TOGGLE_AUTOSTART_ID: &str = "toggle-autostart";
 const TRAY_QUIT_ID: &str = "quit";
-const NOTE_SURFACE_CORNER_RADIUS: i32 = 14;
 const NOTEPAD_POOL_CAPACITY: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,7 +70,6 @@ pub struct ShortcutSpec {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DynamicWindowVisualOptions {
     pub transparent: bool,
-    pub corner_radius: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -131,91 +129,6 @@ impl RuntimeState {
 
     fn is_exiting(&self) -> bool {
         self.is_exiting.load(Ordering::SeqCst)
-    }
-}
-
-trait RoundedWindowRegion {
-    fn outer_size(&self) -> tauri::Result<PhysicalSize<u32>>;
-
-    #[cfg(target_os = "windows")]
-    fn hwnd_ptr(&self) -> tauri::Result<*mut std::ffi::c_void>;
-}
-
-impl RoundedWindowRegion for Window {
-    fn outer_size(&self) -> tauri::Result<PhysicalSize<u32>> {
-        Window::outer_size(self)
-    }
-
-    #[cfg(target_os = "windows")]
-    fn hwnd_ptr(&self) -> tauri::Result<*mut std::ffi::c_void> {
-        Ok(Window::hwnd(self)?.0)
-    }
-}
-
-impl RoundedWindowRegion for WebviewWindow {
-    fn outer_size(&self) -> tauri::Result<PhysicalSize<u32>> {
-        WebviewWindow::outer_size(self)
-    }
-
-    #[cfg(target_os = "windows")]
-    fn hwnd_ptr(&self) -> tauri::Result<*mut std::ffi::c_void> {
-        Ok(WebviewWindow::hwnd(self)?.0)
-    }
-}
-
-#[cfg(target_os = "windows")]
-mod win32_rounding {
-    use std::{ffi::c_void, io};
-
-    type Hwnd = *mut c_void;
-    type Hrgn = *mut c_void;
-    type HgdiObj = *mut c_void;
-
-    #[link(name = "gdi32")]
-    unsafe extern "system" {
-        fn CreateRoundRectRgn(x1: i32, y1: i32, x2: i32, y2: i32, w: i32, h: i32) -> Hrgn;
-        fn DeleteObject(ho: HgdiObj) -> i32;
-    }
-
-    #[link(name = "user32")]
-    unsafe extern "system" {
-        fn SetWindowRgn(hwnd: Hwnd, hrgn: Hrgn, bredraw: i32) -> i32;
-    }
-
-    pub fn apply_rounded_region(
-        hwnd: Hwnd,
-        width: u32,
-        height: u32,
-        radius: i32,
-    ) -> io::Result<()> {
-        let width = width.min(i32::MAX as u32) as i32;
-        let height = height.min(i32::MAX as u32) as i32;
-        let diameter = radius.saturating_mul(2);
-
-        if width <= 0 || height <= 0 || diameter <= 0 {
-            return Ok(());
-        }
-
-        unsafe {
-            let region = CreateRoundRectRgn(
-                0,
-                0,
-                width.saturating_add(1),
-                height.saturating_add(1),
-                diameter,
-                diameter,
-            );
-            if region.is_null() {
-                return Err(io::Error::last_os_error());
-            }
-
-            if SetWindowRgn(hwnd, region, 1) == 0 {
-                let _ = DeleteObject(region);
-                return Err(io::Error::last_os_error());
-            }
-        }
-
-        Ok(())
     }
 }
 
@@ -346,18 +259,6 @@ pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn handle_window_event(window: &Window, event: &WindowEvent) {
-    if let WindowEvent::Resized(_) = event {
-        let visual_options = dynamic_window_visual_options(window.label());
-        if visual_options.corner_radius.is_some() {
-            if let Err(error) = apply_dynamic_window_visuals(window, visual_options) {
-                eprintln!(
-                    "failed to update rounded region for window {}: {error}",
-                    window.label()
-                );
-            }
-        }
-    }
-
     if window.label() != MAIN_WINDOW_LABEL {
         return;
     }
@@ -601,7 +502,7 @@ fn prewarm_notepad(app: &AppHandle) -> Result<(), AppError> {
     let specs = notepad_window_specs();
     let visual_options = dynamic_window_visual_options(&label);
 
-    let window = WebviewWindowBuilder::new(
+    WebviewWindowBuilder::new(
         app,
         &label,
         WebviewUrl::App("index.html?view=notepad&standby=1".into()),
@@ -618,7 +519,6 @@ fn prewarm_notepad(app: &AppHandle) -> Result<(), AppError> {
     .focused(false)
     .build()?;
 
-    apply_dynamic_window_visuals(&window, visual_options)?;
     pool.put(label);
 
     Ok(())
@@ -676,7 +576,6 @@ fn open_or_focus_window(
     if let Some(window) = app.get_webview_window(label) {
         apply_window_bounds(&window, bounds)?;
         window.set_shadow(shadow)?;
-        apply_dynamic_window_visuals(&window, visual_options)?;
         window.unminimize()?;
         window.show()?;
         window.set_focus()?;
@@ -700,8 +599,7 @@ fn open_or_focus_window(
             .inner_size(bounds.width as f64, bounds.height as f64);
     }
 
-    let window = builder.build()?;
-    apply_dynamic_window_visuals(&window, visual_options)?;
+    builder.build()?;
 
     Ok(label.to_string())
 }
@@ -713,41 +611,6 @@ fn apply_window_bounds(
     if let Some(bounds) = bounds {
         window.set_position(PhysicalPosition::new(bounds.x, bounds.y))?;
         window.set_size(PhysicalSize::new(bounds.width, bounds.height))?;
-    }
-
-    Ok(())
-}
-
-fn apply_dynamic_window_visuals<W: RoundedWindowRegion>(
-    window: &W,
-    visual_options: DynamicWindowVisualOptions,
-) -> Result<(), AppError> {
-    apply_rounded_window_region(window, visual_options.corner_radius)
-}
-
-fn apply_rounded_window_region<W: RoundedWindowRegion>(
-    window: &W,
-    corner_radius: Option<i32>,
-) -> Result<(), AppError> {
-    let Some(corner_radius) = corner_radius else {
-        return Ok(());
-    };
-
-    #[cfg(target_os = "windows")]
-    {
-        let size = window.outer_size()?;
-        win32_rounding::apply_rounded_region(
-            window.hwnd_ptr()?,
-            size.width,
-            size.height,
-            corner_radius,
-        )?;
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = window;
-        let _ = corner_radius;
     }
 
     Ok(())
@@ -769,7 +632,6 @@ fn dynamic_window_visual_options(label: &str) -> DynamicWindowVisualOptions {
 
     DynamicWindowVisualOptions {
         transparent: is_note_surface,
-        corner_radius: is_note_surface.then_some(NOTE_SURFACE_CORNER_RADIUS),
     }
 }
 
@@ -1112,26 +974,19 @@ mod tests {
     }
 
     #[test]
-    fn makes_note_surfaces_transparent_for_rounded_tile_corners() {
+    fn makes_note_surfaces_transparent() {
         assert_eq!(
             dynamic_window_visual_options("notepad-note-1"),
-            DynamicWindowVisualOptions {
-                transparent: true,
-                corner_radius: Some(14),
-            }
+            DynamicWindowVisualOptions { transparent: true }
         );
         assert_eq!(
             dynamic_window_visual_options("tile-note-1"),
-            DynamicWindowVisualOptions {
-                transparent: true,
-                corner_radius: Some(14),
-            }
+            DynamicWindowVisualOptions { transparent: true }
         );
         assert_eq!(
             dynamic_window_visual_options("main"),
             DynamicWindowVisualOptions {
                 transparent: false,
-                corner_radius: None,
             }
         );
     }
