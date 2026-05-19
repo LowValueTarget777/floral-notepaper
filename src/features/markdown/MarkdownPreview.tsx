@@ -157,7 +157,7 @@ const components: Components = {
 
 export function MarkdownPreview({ content, fontSize = 14 }: MarkdownPreviewProps) {
   return (
-    <div className="max-w-[560px] font-body" style={{ fontSize: `${fontSize}px` }}>
+    <div className="font-body" style={{ fontSize: `${fontSize}px` }}>
       {content.trim() ? (
         <Markdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
           {content}
