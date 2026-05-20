@@ -1,15 +1,16 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "花笺",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "identifier": "com.floral-notepaper.app",
   "build": {
-    "beforeDevCommand": "npm.cmd run dev",
+    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm.cmd run build",
+    "beforeBuildCommand": "taskkill /F /IM floral-notepaper.exe 2>nul & taskkill /F /IM 花笺.exe 2>nul & npm run build",
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -29,12 +30,16 @@
   },
   "bundle": {
     "active": true,
-    "targets": "nsis",
+    "targets": ["app", "dmg", "nsis"],
+    "macOS": {
+      "minimumSystemVersion": "15.0"
+    },
     "windows": {
       "nsis": {
         "installMode": "both",
         "languages": ["SimpChinese"],
         "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
         "installerHooks": "nsis-hooks.nsh"
       }
     },
@@ -43,6 +48,12 @@
         "ext": ["md", "markdown"],
         "name": "Markdown Document",
         "description": "Markdown document file",
+        "role": "Editor"
+      },
+      {
+        "ext": ["txt"],
+        "name": "Text Document",
+        "description": "Plain text file",
         "role": "Editor"
       }
     ],

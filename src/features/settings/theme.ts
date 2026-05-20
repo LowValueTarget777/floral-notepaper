@@ -11,9 +11,12 @@ function resolveTheme(option: ThemeOption): "light" | "dark" {
 
 export function applyTheme(option: ThemeOption): void {
   const root = document.documentElement;
-  root.classList.add("theme-transition");
-  root.setAttribute("data-theme", resolveTheme(option));
-  setTimeout(() => root.classList.remove("theme-transition"), 400);
+  const resolved = resolveTheme(option);
+  if (root.getAttribute("data-theme") !== resolved) {
+    root.classList.add("theme-transition");
+    root.setAttribute("data-theme", resolved);
+    setTimeout(() => root.classList.remove("theme-transition"), 400);
+  }
 }
 
 let systemListener: (() => void) | null = null;

@@ -76,6 +76,7 @@ pub struct ShortcutSpec {
     pub ctrl: bool,
     pub alt: bool,
     pub shift: bool,
+    pub meta: bool,
     pub key: ShortcutKey,
 }
 
@@ -106,6 +107,17 @@ struct WindowSizeSpec {
     height: f64,
     min_width: f64,
     min_height: f64,
+}
+
+struct WindowOpenOptions {
+    url: String,
+    title: String,
+    specs: WindowSizeSpec,
+    decorations: bool,
+    always_on_top: bool,
+    shadow: bool,
+    skip_taskbar: bool,
+    bounds: Option<WindowBounds>,
 }
 
 #[derive(Default)]
@@ -208,17 +220,19 @@ pub fn shortcut_from_config(value: &str) -> Option<ShortcutSpec> {
     let mut ctrl = false;
     let mut alt = false;
     let mut shift = false;
+    let mut meta = false;
 
     for m in modifier_parts {
         match m.to_ascii_lowercase().as_str() {
             "ctrl" | "control" | "cmdorctrl" | "commandorcontrol" => ctrl = true,
             "alt" | "option" => alt = true,
             "shift" => shift = true,
+            "meta" | "cmd" | "command" | "super" => meta = true,
             _ => return None,
         }
     }
 
-    if !ctrl && !alt {
+    if !ctrl && !alt && !meta {
         return None;
     }
 
@@ -228,6 +242,7 @@ pub fn shortcut_from_config(value: &str) -> Option<ShortcutSpec> {
         ctrl,
         alt,
         shift,
+        meta,
         key,
     })
 }
@@ -312,10 +327,12 @@ pub async fn open_tile_window(
 }
 
 pub fn extract_file_arg(args: &[String]) -> Option<String> {
-    args.iter().find(|arg| {
-        let lower = arg.to_lowercase();
-        lower.ends_with(".md") || lower.ends_with(".markdown")
-    }).cloned()
+    args.iter()
+        .find(|arg| {
+            let lower = arg.to_lowercase();
+            lower.ends_with(".md") || lower.ends_with(".markdown") || lower.ends_with(".txt")
+        })
+        .cloned()
 }
 
 pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
@@ -426,7 +443,7 @@ fn setup_tray(app: &mut App) -> Result<(), Box<dyn Error>> {
         )
         .tooltip("花笺")
         .menu(&menu)
-        .show_menu_on_left_click(false)
+        .show_menu_on_left_click(cfg!(target_os = "macos"))
         .on_menu_event(|app, event| {
             if let Err(error) = handle_tray_menu_event(app, event.id.as_ref()) {
                 eprintln!("failed to handle tray menu event {:?}: {error}", event.id);
@@ -483,17 +500,21 @@ pub fn show_main_window(app: &AppHandle) -> Result<(), AppError> {
     open_or_focus_window(
         app,
         MAIN_WINDOW_LABEL,
-        "index.html".to_string(),
-        "花笺",
-        1180.0,
-        760.0,
-        900.0,
-        620.0,
-        false,
-        false,
-        true,
-        false,
-        None,
+        WindowOpenOptions {
+            url: "index.html".to_string(),
+            title: "花笺".to_string(),
+            specs: WindowSizeSpec {
+                width: 1180.0,
+                height: 760.0,
+                min_width: 900.0,
+                min_height: 620.0,
+            },
+            decorations: false,
+            always_on_top: false,
+            shadow: true,
+            skip_taskbar: false,
+            bounds: None,
+        },
     )?;
     Ok(())
 }
@@ -510,7 +531,7 @@ fn open_notepad_window_now(
     }
 
     let label = notepad_window_label(note_id);
-    let specs = notepad_window_specs();
+    let specs = saved_surface_specs(app);
     let url = match note_id {
         Some(id) => format!("index.html?view=notepad&noteId={id}"),
         None => "index.html?view=notepad".to_string(),
@@ -519,29 +540,25 @@ fn open_notepad_window_now(
     open_or_focus_window(
         app,
         &label,
-        url,
-        "花笺便签",
-        specs.width,
-        specs.height,
-        specs.min_width,
-        specs.min_height,
-        false,
-        true,
-        false,
-        true,
-        bounds,
+        WindowOpenOptions {
+            url,
+            title: "花笺便签".to_string(),
+            specs,
+            decorations: false,
+            always_on_top: true,
+            shadow: false,
+            skip_taskbar: true,
+            bounds,
+        },
     )
 }
 
-fn activate_pooled_notepad(
-    app: &AppHandle,
-    bounds: Option<WindowBounds>,
-) -> Option<String> {
+fn activate_pooled_notepad(app: &AppHandle, bounds: Option<WindowBounds>) -> Option<String> {
     let pool = app.try_state::<NotepadPool>()?;
     let label = pool.take()?;
     let window = app.get_webview_window(&label)?;
 
-    let specs = notepad_window_specs();
+    let specs = saved_surface_specs(app);
     let _ = window.set_size(tauri::LogicalSize::new(specs.width, specs.height));
     let _ = apply_window_bounds(&window, bounds);
     let _ = window.show();
@@ -558,6 +575,8 @@ pub fn recycle_notepad_window(app: &AppHandle, label: &str) -> Result<(), AppErr
         return Ok(());
     };
 
+    save_surface_size(&window);
+
     window.hide()?;
 
     let recycled = app
@@ -570,6 +589,34 @@ pub fn recycle_notepad_window(app: &AppHandle, label: &str) -> Result<(), AppErr
     }
 
     Ok(())
+}
+
+fn save_surface_size(window: &tauri::WebviewWindow) {
+    let Ok(store) = default_store() else {
+        return;
+    };
+    let Ok(mut config) = store.load_config() else {
+        return;
+    };
+    if !config.remember_surface_size {
+        return;
+    }
+    let Ok(size) = window.inner_size() else {
+        return;
+    };
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let logical = size.to_logical::<f64>(scale);
+    let w = logical.width.round() as u32;
+    let h = logical.height.round() as u32;
+    if w == 0 || h == 0 {
+        return;
+    }
+    if config.surface_width == Some(w) && config.surface_height == Some(h) {
+        return;
+    }
+    config.surface_width = Some(w);
+    config.surface_height = Some(h);
+    let _ = store.save_config(config);
 }
 
 fn schedule_notepad_prewarm(app: &AppHandle) {
@@ -593,12 +640,10 @@ fn schedule_notepad_replenish(app: &AppHandle, delay_ms: u64) {
 }
 
 fn prewarm_notepad(app: &AppHandle) -> Result<(), AppError> {
-    let pool = app
-        .try_state::<NotepadPool>()
-        .ok_or_else(|| AppError {
-            code: "noPool".into(),
-            message: "notepad pool not initialized".into(),
-        })?;
+    let pool = app.try_state::<NotepadPool>().ok_or_else(|| AppError {
+        code: "noPool".into(),
+        message: "notepad pool not initialized".into(),
+    })?;
 
     if !pool.is_below_capacity() {
         return Ok(());
@@ -640,6 +685,56 @@ fn notepad_window_specs() -> WindowSizeSpec {
     }
 }
 
+fn saved_surface_specs(app: &AppHandle) -> WindowSizeSpec {
+    let defaults = notepad_window_specs();
+    let Ok(config) = load_config() else {
+        return defaults;
+    };
+    if !config.remember_surface_size {
+        return defaults;
+    }
+    if let Some((w, h)) = visible_surface_size(app) {
+        return WindowSizeSpec {
+            width: w.max(defaults.min_width),
+            height: h.max(defaults.min_height),
+            ..defaults
+        };
+    }
+    match (config.surface_width, config.surface_height) {
+        (Some(w), Some(h)) => WindowSizeSpec {
+            width: (w as f64).max(defaults.min_width),
+            height: (h as f64).max(defaults.min_height),
+            ..defaults
+        },
+        _ => defaults,
+    }
+}
+
+fn visible_surface_size(app: &AppHandle) -> Option<(f64, f64)> {
+    let mut fallback: Option<(f64, f64)> = None;
+    for (label, window) in app.webview_windows() {
+        if !label.starts_with("notepad-") && !label.starts_with("tile-") {
+            continue;
+        }
+        if !window.is_visible().unwrap_or(false) {
+            continue;
+        }
+        let size = window.inner_size().ok()?;
+        let scale = window.scale_factor().unwrap_or(1.0);
+        let logical = size.to_logical::<f64>(scale);
+        if logical.width <= 0.0 || logical.height <= 0.0 {
+            continue;
+        }
+        if window.is_focused().unwrap_or(false) {
+            return Some((logical.width, logical.height));
+        }
+        if fallback.is_none() {
+            fallback = Some((logical.width, logical.height));
+        }
+    }
+    fallback
+}
+
 fn open_tile_window_now(
     app: &AppHandle,
     note_id: &str,
@@ -648,64 +743,53 @@ fn open_tile_window_now(
     let label = tile_window_label(note_id);
     let url = format!("index.html?view=tile&noteId={note_id}");
 
-    let specs = notepad_window_specs();
+    let specs = saved_surface_specs(app);
 
     open_or_focus_window(
         app,
         &label,
-        url,
-        "花笺磁贴",
-        specs.width,
-        specs.height,
-        specs.min_width,
-        specs.min_height,
-        false,
-        true,
-        false,
-        true,
-        bounds,
+        WindowOpenOptions {
+            url,
+            title: "花笺磁贴".to_string(),
+            specs,
+            decorations: false,
+            always_on_top: true,
+            shadow: false,
+            skip_taskbar: true,
+            bounds,
+        },
     )
 }
 
 fn open_or_focus_window(
     app: &AppHandle,
     label: &str,
-    url: String,
-    title: &str,
-    width: f64,
-    height: f64,
-    min_width: f64,
-    min_height: f64,
-    decorations: bool,
-    always_on_top: bool,
-    shadow: bool,
-    skip_taskbar: bool,
-    bounds: Option<WindowBounds>,
+    opts: WindowOpenOptions,
 ) -> Result<String, AppError> {
     let visual_options = dynamic_window_visual_options(label);
 
     if let Some(window) = app.get_webview_window(label) {
-        apply_window_bounds(&window, bounds)?;
-        window.set_shadow(shadow)?;
+        apply_window_bounds(&window, opts.bounds)?;
+        window.set_shadow(opts.shadow)?;
         window.unminimize()?;
         window.show()?;
         window.set_focus()?;
         return Ok(label.to_string());
     }
 
-    let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
-        .title(title)
-        .inner_size(width, height)
-        .min_inner_size(min_width, min_height)
+    let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App(opts.url.into()))
+        .title(opts.title)
+        .inner_size(opts.specs.width, opts.specs.height)
+        .min_inner_size(opts.specs.min_width, opts.specs.min_height)
         .resizable(true)
-        .decorations(decorations)
+        .decorations(opts.decorations)
         .transparent(visual_options.transparent)
-        .always_on_top(always_on_top)
-        .shadow(shadow)
-        .skip_taskbar(skip_taskbar)
+        .always_on_top(opts.always_on_top)
+        .shadow(opts.shadow)
+        .skip_taskbar(opts.skip_taskbar)
         .visible(false);
 
-    if let Some(bounds) = bounds {
+    if let Some(bounds) = opts.bounds {
         builder = builder
             .position(bounds.x as f64, bounds.y as f64)
             .inner_size(bounds.width as f64, bounds.height as f64);
@@ -829,10 +913,12 @@ fn register_configured_global_shortcut(app: &AppHandle) {
     };
 
     if let Err(error) = register_global_shortcut(app, &config.global_shortcut) {
-        eprintln!(
+        let msg = format!(
             "failed to register global shortcut {}: {error}",
             config.global_shortcut
         );
+        eprintln!("{msg}");
+        let _ = app.emit("shortcut-register-failed", &msg);
     }
 }
 
@@ -896,6 +982,9 @@ fn to_tauri_shortcut(spec: ShortcutSpec) -> Option<Shortcut> {
     }
     if spec.shift {
         modifiers |= Modifiers::SHIFT;
+    }
+    if spec.meta {
+        modifiers |= Modifiers::META;
     }
 
     let code = shortcut_key_to_code(spec.key)?;
@@ -1087,6 +1176,7 @@ mod tests {
                 ctrl: true,
                 alt: false,
                 shift: false,
+                meta: false,
                 key: ShortcutKey::Space,
             })
         );
@@ -1096,6 +1186,7 @@ mod tests {
                 ctrl: true,
                 alt: false,
                 shift: false,
+                meta: false,
                 key: ShortcutKey::Space,
             })
         );
@@ -1105,6 +1196,7 @@ mod tests {
                 ctrl: false,
                 alt: true,
                 shift: false,
+                meta: false,
                 key: ShortcutKey::Space,
             })
         );
@@ -1114,6 +1206,7 @@ mod tests {
                 ctrl: true,
                 alt: false,
                 shift: true,
+                meta: false,
                 key: ShortcutKey::Letter('K'),
             })
         );
@@ -1123,6 +1216,7 @@ mod tests {
                 ctrl: false,
                 alt: true,
                 shift: false,
+                meta: false,
                 key: ShortcutKey::Function(2),
             })
         );
@@ -1132,7 +1226,28 @@ mod tests {
                 ctrl: true,
                 alt: true,
                 shift: false,
+                meta: false,
                 key: ShortcutKey::Digit(3),
+            })
+        );
+        assert_eq!(
+            shortcut_from_config("Command+K"),
+            Some(ShortcutSpec {
+                ctrl: false,
+                alt: false,
+                shift: false,
+                meta: true,
+                key: ShortcutKey::Letter('K'),
+            })
+        );
+        assert_eq!(
+            shortcut_from_config("Meta+Shift+P"),
+            Some(ShortcutSpec {
+                ctrl: false,
+                alt: false,
+                shift: true,
+                meta: true,
+                key: ShortcutKey::Letter('P'),
             })
         );
     }
@@ -1169,6 +1284,9 @@ mod tests {
             font_size: 14,
             surface_font_size: 14,
             external_file_auto_save: true,
+            remember_surface_size: true,
+            surface_width: None,
+            surface_height: None,
         };
         let next = AppConfig {
             notes_dir: "D:\\other-notes".into(),
@@ -1184,6 +1302,9 @@ mod tests {
             font_size: 16,
             surface_font_size: 16,
             external_file_auto_save: true,
+            remember_surface_size: true,
+            surface_width: None,
+            surface_height: None,
         };
 
         assert_eq!(
@@ -1231,9 +1352,7 @@ mod tests {
         );
         assert_eq!(
             dynamic_window_visual_options("main"),
-            DynamicWindowVisualOptions {
-                transparent: false,
-            }
+            DynamicWindowVisualOptions { transparent: false }
         );
     }
 

@@ -114,16 +114,6 @@ export function SettingsPanel({
         </section>
 
         <section className="space-y-2">
-          <label className="block text-[11px] font-body text-ink-faint">
-            快捷键
-          </label>
-          <ShortcutRecorder
-            value={config.globalShortcut}
-            onChange={(v) => setConfigValue("globalShortcut", v)}
-          />
-        </section>
-
-        <section className="space-y-2">
           <ToggleRow
             label="关闭到托盘"
             checked={config.closeToTray}
@@ -153,6 +143,32 @@ export function SettingsPanel({
               setConfigValue("externalFileAutoSave", checked)
             }
           />
+          <ToggleRow
+            label="记住小窗尺寸"
+            checked={config.rememberSurfaceSize}
+            onChange={(checked) =>
+              setConfigValue("rememberSurfaceSize", checked)
+            }
+          />
+        </section>
+
+        <section className="space-y-2">
+          <ToggleRow
+            label="Ctrl+右键快速关闭磁贴"
+            checked={config.tileCtrlClose}
+            onChange={(checked) =>
+              setConfigValue("tileCtrlClose", checked)
+            }
+          />
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-body text-ink-faint/70 px-0.5">
+              呼出小窗快捷键
+            </label>
+            <ShortcutRecorder
+              value={config.globalShortcut}
+              onChange={(v) => setConfigValue("globalShortcut", v)}
+            />
+          </div>
         </section>
 
         <section className="space-y-2">
@@ -277,12 +293,9 @@ function ToggleRow({ label, checked, onChange }: ToggleRowProps) {
         }`}
       >
         <div
-          className="absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.15)]"
-          style={{
-            transform: `translateX(${checked ? 14 : 0}px)`,
-            transition: "transform 250ms cubic-bezier(0.22, 1, 0.36, 1)",
-            willChange: "transform",
-          }}
+          className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.15)] transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            checked ? "translate-x-[14px]" : "translate-x-0"
+          }`}
         />
       </div>
     </label>

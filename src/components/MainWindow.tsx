@@ -75,7 +75,7 @@ const saveStateLabel: Record<SaveState, string> = {
   error: "保存失败",
 };
 
-type FormatAction = "bold" | "italic" | "heading" | "hr" | "ul" | "ol" | "code" | "quote";
+type FormatAction = "bold" | "italic" | "heading" | "hr" | "ul" | "ol" | "code" | "quote" | "inlineMath" | "blockMath";
 
 const toolbarButtons: { label: string; title: string; style: string; action: FormatAction }[] = [
   { label: "B", title: "粗体", style: "font-bold", action: "bold" },
@@ -86,6 +86,8 @@ const toolbarButtons: { label: string; title: string; style: string; action: For
   { label: "1.", title: "有序列表", style: "font-mono text-[9px]", action: "ol" },
   { label: "<>", title: "代码", style: "font-mono text-[9px]", action: "code" },
   { label: "❝", title: "引用", style: "", action: "quote" },
+  { label: "∑", title: "行内公式", style: "font-mono text-[11px]", action: "inlineMath" },
+  { label: "∫", title: "块级公式", style: "font-mono text-[11px]", action: "blockMath" },
 ];
 
 function applyFormat(
@@ -209,6 +211,20 @@ function applyFormat(
       }
       break;
     }
+    case "inlineMath": {
+      const wrapped = `$${selected || "E=mc^2"}$`;
+      result = before + wrapped + after;
+      cursorStart = start + 1;
+      cursorEnd = cursorStart + (selected || "E=mc^2").length;
+      break;
+    }
+    case "blockMath": {
+      const wrapped = `\n$$\n${selected || "x^2 + y^2 = r^2"}\n$$\n`;
+      result = before + wrapped + after;
+      cursorStart = start + 4;
+      cursorEnd = cursorStart + (selected || "x^2 + y^2 = r^2").length;
+      break;
+    }
   }
 
   setContent(result);
@@ -276,6 +292,9 @@ export function MainWindow({
   const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const [splitRatio, setSplitRatio] = useState(0.5);
+  const [isResizingSplit, setIsResizingSplit] = useState(false);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
   const [categoryMenu, setCategoryMenu] = useState<CategoryMenuState | null>(null);
   const [categoryMenuClosing, setCategoryMenuClosing] = useState(false);
   const [categoryMenuConfirmDelete, setCategoryMenuConfirmDelete] = useState(false);
@@ -374,7 +393,7 @@ export function MainWindow({
         getFileModifiedTime(filePath),
       ]);
       const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
-      const displayTitle = fileName.replace(/\.md$/i, "");
+      const displayTitle = fileName.replace(/\.(md|txt)$/i, "");
 
       setExternalFiles((current) => {
         if (current.some((f) => f.id === filePath)) {
@@ -962,6 +981,31 @@ export function MainWindow({
     };
   }, [isResizingSidebar]);
 
+  useEffect(() => {
+    if (!isResizingSplit) return;
+
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+
+    const onMouseMove = (e: globalThis.MouseEvent) => {
+      const container = splitContainerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const ratio = (e.clientX - rect.left) / rect.width;
+      setSplitRatio(Math.min(Math.max(ratio, 0.2), 0.8));
+    };
+    const onMouseUp = () => setIsResizingSplit(false);
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+  }, [isResizingSplit]);
+
   const handlePinEntry = async () => {
     if (!selectedId) return;
     if (saveState === "dirty") {
@@ -1189,9 +1233,9 @@ export function MainWindow({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
-                  <path d="M12 21V9" />
-                  <path d="m7 16 5 5 5-5" />
-                  <path d="M5 3h14" />
+                  <path d="M12 3v12" />
+                  <path d="m7 10 5 5 5-5" />
+                  <path d="M5 21h14" />
                 </svg>
                 <span>导入 Markdown</span>
               </button>
@@ -1383,7 +1427,7 @@ export function MainWindow({
                   const isCollapsed = collapsedCategories.has(group.category);
 
                   return (
-                    <div key={group.category} className="px-2 mb-1.5">
+                    <div key={group.category} className="px-2 mb-0.5">
                       <div
                         className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg group/cat cursor-pointer select-none transition-all duration-200 ${
                           dragOverCategory === group.category
@@ -1764,7 +1808,7 @@ export function MainWindow({
               </div>
             </div>
 
-            <div key={viewMode} className="flex-1 flex min-h-0 animate-view-fade">
+            <div key={viewMode} ref={splitContainerRef} className="flex-1 flex min-h-0 animate-view-fade">
               {!selectedId && !isLoading ? (
                 <div className="flex-1 flex items-center justify-center text-[13px] text-ink-ghost">
                   选择或新建一篇笔记
@@ -1773,11 +1817,8 @@ export function MainWindow({
                 <>
                   {(viewMode === "edit" || viewMode === "split") && (
                     <div
-                      className={`flex flex-col min-h-0 ${
-                        viewMode === "split"
-                          ? "w-1/2 border-r border-paper-deep/20"
-                          : "w-full"
-                      }`}
+                      className="flex flex-col min-h-0 shrink-0"
+                      style={{ width: viewMode === "split" ? `${splitRatio * 100}%` : "100%" }}
                     >
                       <div className="flex items-center gap-0.5 px-4 pt-2 pb-1 shrink-0">
                         {toolbarButtons.map((button) => (
@@ -1797,7 +1838,7 @@ export function MainWindow({
                         ))}
                       </div>
 
-                      <div className="flex-1 overflow-y-auto px-5 pb-4">
+                      <div className="flex-1 overflow-hidden px-5 pb-4">
                         <textarea
                           ref={contentRef}
                           value={content}
@@ -1815,11 +1856,21 @@ export function MainWindow({
                     </div>
                   )}
 
+                  {viewMode === "split" && (
+                    <div
+                      className={`w-1 shrink-0 cursor-col-resize group relative ${isResizingSplit ? "bg-bamboo/30" : "hover:bg-bamboo/20"} transition-colors`}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setIsResizingSplit(true);
+                      }}
+                    >
+                      <div className={`absolute inset-y-0 -left-1 -right-1 ${isResizingSplit ? "" : "group-hover:bg-bamboo/5"}`} />
+                    </div>
+                  )}
+
                   {(viewMode === "preview" || viewMode === "split") && (
                     <div
-                      className={`flex flex-col min-h-0 ${
-                        viewMode === "split" ? "w-1/2" : "w-full"
-                      }`}
+                      className="flex flex-col min-h-0 min-w-0 flex-1"
                     >
                       {viewMode === "split" && (
                         <div className="px-4 pt-2.5 pb-1 shrink-0">
@@ -1848,7 +1899,7 @@ export function MainWindow({
                 </span>
                 <span className="text-[10px] text-ink-ghost/40">|</span>
                 <span className="text-[10px] text-ink-ghost font-mono">
-                  Markdown
+                  Markdown + LaTeX
                 </span>
               </div>
               <div className="flex items-center gap-3">
