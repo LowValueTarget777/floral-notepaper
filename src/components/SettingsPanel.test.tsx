@@ -18,6 +18,9 @@ const config = {
   externalFileAutoSave: true,
   rememberSurfaceSize: true,
   tileCtrlClose: true,
+  syncEnabled: true,
+  syncServerUrl: "https://notes.example.com",
+  syncToken: "secret-token",
 };
 
 describe("SettingsPanel", () => {
@@ -28,6 +31,15 @@ describe("SettingsPanel", () => {
         onChange={vi.fn()}
         onChooseNotesDir={vi.fn()}
         onClose={vi.fn()}
+        syncStatus={{
+          enabled: true,
+          configured: true,
+          lastRevision: 9,
+          lastSyncAt: "2026-05-18T08:00:00Z",
+          lastError: null,
+        }}
+        onSyncNow={vi.fn()}
+        onTestSyncConnection={vi.fn()}
       />,
     );
 
@@ -44,9 +56,55 @@ describe("SettingsPanel", () => {
     expect(markup).toContain("自定义");
     expect(markup).toContain('type="color"');
     expect(markup).toContain('value="#f6f3ec"');
+    expect(markup).toContain("同步");
+    expect(markup).toContain("https://notes.example.com");
+    expect(markup).toContain("立即同步");
+    expect(markup).toContain("测试连接");
     expect(markup).toContain("默认视图");
     expect(markup).toContain("编辑");
     expect(markup).toContain("分栏");
     expect(markup).toContain("预览");
+  });
+
+  test("renders friendly sync feedback and errors", () => {
+    const successMarkup = renderToStaticMarkup(
+      <SettingsPanel
+        config={config}
+        onChange={vi.fn()}
+        onChooseNotesDir={vi.fn()}
+        onClose={vi.fn()}
+        syncStatus={{
+          enabled: true,
+          configured: true,
+          lastRevision: 9,
+          lastSyncAt: null,
+          lastError: null,
+        }}
+        syncFeedback={{ tone: "success", message: "连接成功，可以开始同步。" }}
+        onSyncNow={vi.fn()}
+        onTestSyncConnection={vi.fn()}
+      />,
+    );
+
+    const errorMarkup = renderToStaticMarkup(
+      <SettingsPanel
+        config={config}
+        onChange={vi.fn()}
+        onChooseNotesDir={vi.fn()}
+        onClose={vi.fn()}
+        syncStatus={{
+          enabled: true,
+          configured: true,
+          lastRevision: 9,
+          lastSyncAt: null,
+          lastError: "无法连接到同步服务器，请检查地址、端口和网络。",
+        }}
+        onSyncNow={vi.fn()}
+        onTestSyncConnection={vi.fn()}
+      />,
+    );
+
+    expect(successMarkup).toContain("连接成功，可以开始同步。");
+    expect(errorMarkup).toContain("无法连接到同步服务器，请检查地址、端口和网络。");
   });
 });

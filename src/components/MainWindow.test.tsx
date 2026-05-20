@@ -1,6 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
-import { MainWindow, runEditorUndo } from "./MainWindow";
+import {
+  MainWindow,
+  resolveNoteRefreshAction,
+  runEditorUndo,
+} from "./MainWindow";
 
 describe("MainWindow settings", () => {
   test("can render the settings panel with the loaded config", () => {
@@ -23,6 +27,9 @@ describe("MainWindow settings", () => {
           externalFileAutoSave: true,
           rememberSurfaceSize: true,
           tileCtrlClose: true,
+          syncEnabled: false,
+          syncServerUrl: "",
+          syncToken: "",
         }}
       />,
     );
@@ -42,9 +49,9 @@ describe("MainWindow settings", () => {
   test("renders the import Markdown icon as a down arrow", () => {
     const markup = renderToStaticMarkup(<MainWindow />);
 
-    expect(markup).toContain('d="M12 21V9"');
-    expect(markup).toContain('d="m7 16 5 5 5-5"');
-    expect(markup).toContain('d="M5 3h14"');
+    expect(markup).toContain('d="M12 3v12"');
+    expect(markup).toContain('d="m7 10 5 5 5-5"');
+    expect(markup).toContain('d="M5 21h14"');
     expect(markup).not.toContain('d="m7 8 5-5 5 5"');
   });
 });
@@ -69,5 +76,57 @@ describe("MainWindow editor undo", () => {
     expect(undone).toBe(true);
     expect(focus).toHaveBeenCalledOnce();
     expect(execCommand).toHaveBeenCalledWith("undo");
+  });
+});
+
+describe("MainWindow note refresh selection", () => {
+  test("loads the first remaining note when the selected note disappears", () => {
+    const action = resolveNoteRefreshAction(
+      [
+        {
+          id: "note-b",
+          title: "B",
+          fileName: "note-b.md",
+          category: "",
+          createdAt: "2026-05-20T08:00:00Z",
+          updatedAt: "2026-05-20T08:01:00Z",
+          wordCount: 1,
+          preview: "b",
+        },
+      ],
+      {
+        selectedId: "note-a",
+        isExternal: false,
+        saveState: "saved",
+        selectedUpdatedAt: "2026-05-20T08:00:00Z",
+      },
+    );
+
+    expect(action).toEqual({ type: "load", noteId: "note-b" });
+  });
+
+  test("keeps the current note when local edits are still dirty", () => {
+    const action = resolveNoteRefreshAction(
+      [
+        {
+          id: "note-a",
+          title: "A",
+          fileName: "note-a.md",
+          category: "",
+          createdAt: "2026-05-20T08:00:00Z",
+          updatedAt: "2026-05-20T08:02:00Z",
+          wordCount: 1,
+          preview: "a",
+        },
+      ],
+      {
+        selectedId: "note-a",
+        isExternal: false,
+        saveState: "dirty",
+        selectedUpdatedAt: "2026-05-20T08:00:00Z",
+      },
+    );
+
+    expect(action).toEqual({ type: "keep" });
   });
 });

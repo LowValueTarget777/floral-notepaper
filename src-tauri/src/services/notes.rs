@@ -38,6 +38,12 @@ pub struct AppConfig {
     pub surface_width: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surface_height: Option<u32>,
+    #[serde(default = "default_sync_enabled")]
+    pub sync_enabled: bool,
+    #[serde(default = "default_sync_server_url")]
+    pub sync_server_url: String,
+    #[serde(default = "default_sync_token")]
+    pub sync_token: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -178,6 +184,10 @@ impl NoteStore {
         self.base_dir.join("config.json")
     }
 
+    pub fn sync_state_path(&self) -> PathBuf {
+        self.base_dir.join("sync_state.json")
+    }
+
     pub fn load_config(&self) -> Result<AppConfig, AppError> {
         self.ensure_base_dir()?;
         let path = self.config_path();
@@ -206,6 +216,7 @@ impl NoteStore {
                 .exists()
         });
         metadata.sort_by_key(|note| std::cmp::Reverse(note.updated_at));
+        metadata.sort_by_key(|note| std::cmp::Reverse(note.updated_at));
         Ok(metadata)
     }
 
@@ -225,6 +236,13 @@ impl NoteStore {
             word_count: metadata.word_count,
             content,
         })
+    }
+
+    pub fn list_note_contents(&self) -> Result<Vec<Note>, AppError> {
+        self.list_notes()?
+            .into_iter()
+            .map(|metadata| self.read_note(&metadata.id))
+            .collect()
     }
 
     pub fn create_note(&self, request: SaveNoteRequest) -> Result<Note, AppError> {
@@ -329,6 +347,78 @@ impl NoteStore {
         let path = self.note_path_in_category(&metadata.file_name, &metadata.category);
         if path.exists() {
             fs::remove_file(&path)?;
+        }
+        self.save_metadata(&metadata_file)
+    }
+
+    pub fn upsert_synced_note(
+        &self,
+        id: &str,
+        title: &str,
+        content: &str,
+        category: &str,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+    ) -> Result<Note, AppError> {
+        self.ensure_storage()?;
+        let mut metadata_file = self.load_metadata()?;
+        let file_name = self.file_name_for(id, title);
+        let note_path = self.note_path_in_category(&file_name, category);
+        if let Some(parent) = note_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&note_path, content)?;
+
+        let word_count = count_words(content);
+        let note_preview = preview(content);
+        if let Some(existing) = metadata_file.notes.iter_mut().find(|note| note.id == id) {
+            let old_path = self.note_path_in_category(&existing.file_name, &existing.category);
+            if old_path.exists() && old_path != note_path {
+                fs::remove_file(old_path)?;
+            }
+            existing.title = title.to_string();
+            existing.file_name = file_name.clone();
+            existing.category = category.to_string();
+            existing.created_at = created_at;
+            existing.updated_at = updated_at;
+            existing.word_count = word_count;
+            existing.preview = note_preview;
+        } else {
+            metadata_file.notes.push(NoteMetadata {
+                id: id.to_string(),
+                title: title.to_string(),
+                file_name: file_name.clone(),
+                category: category.to_string(),
+                created_at,
+                updated_at,
+                word_count,
+                preview: note_preview,
+            });
+        }
+
+        self.save_metadata(&metadata_file)?;
+        Ok(Note {
+            id: id.to_string(),
+            title: title.to_string(),
+            file_name,
+            category: category.to_string(),
+            created_at,
+            updated_at,
+            word_count,
+            content: content.to_string(),
+        })
+    }
+
+    pub fn delete_synced_note(&self, id: &str) -> Result<(), AppError> {
+        self.ensure_storage()?;
+        let mut metadata_file = self.load_metadata()?;
+        let Some(index) = metadata_file.notes.iter().position(|note| note.id == id) else {
+            return Ok(());
+        };
+        let metadata = metadata_file.notes.remove(index);
+        let path = self.note_path_in_category(&metadata.file_name, &metadata.category);
+        if path.exists() {
+            fs::remove_file(path)?;
         }
         self.save_metadata(&metadata_file)
     }
@@ -503,6 +593,9 @@ impl NoteStore {
             tile_ctrl_close: default_tile_ctrl_close(),
             surface_width: None,
             surface_height: None,
+            sync_enabled: default_sync_enabled(),
+            sync_server_url: default_sync_server_url(),
+            sync_token: default_sync_token(),
         }
     }
 
@@ -787,6 +880,18 @@ fn default_tile_ctrl_close() -> bool {
     true
 }
 
+fn default_sync_enabled() -> bool {
+    false
+}
+
+fn default_sync_server_url() -> String {
+    String::new()
+}
+
+fn default_sync_token() -> String {
+    String::new()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -902,6 +1007,13 @@ mod tests {
         assert_eq!(default_config.tile_color_mode, "system");
         assert_eq!(default_config.theme, "system");
         assert!(default_config.notes_dir.ends_with("notes"));
+        assert!(!default_config.sync_enabled);
+        assert_eq!(default_config.sync_server_url, "");
+        assert_eq!(default_config.sync_token, "");
+        assert!(default_config.remember_surface_size);
+        assert!(default_config.tile_ctrl_close);
+        assert_eq!(default_config.surface_width, None);
+        assert_eq!(default_config.surface_height, None);
 
         let custom_notes_dir = store.base_dir().join("custom-notes");
         let saved = AppConfig {
@@ -919,8 +1031,12 @@ mod tests {
             surface_font_size: 16,
             external_file_auto_save: true,
             remember_surface_size: true,
+            tile_ctrl_close: true,
             surface_width: None,
             surface_height: None,
+            sync_enabled: true,
+            sync_server_url: "https://notes.example.com".into(),
+            sync_token: "secret-token".into(),
         };
 
         store.save_config(saved.clone()).expect("save config");
@@ -959,6 +1075,62 @@ mod tests {
         assert_eq!(loaded.theme, "system");
         assert_eq!(loaded.font_size, 14);
         assert_eq!(loaded.surface_font_size, 14);
+        assert!(!loaded.sync_enabled);
+        assert_eq!(loaded.sync_server_url, "");
+        assert_eq!(loaded.sync_token, "");
+    }
+
+    #[test]
+    fn upserts_synced_note_with_preserved_identity_and_timestamps() {
+        let store = NoteStore::new(test_root("sync-upsert"));
+        let created_at = DateTime::parse_from_rfc3339("2026-05-18T08:00:00Z")
+            .expect("created at")
+            .with_timezone(&Utc);
+        let updated_at = DateTime::parse_from_rfc3339("2026-05-18T08:10:00Z")
+            .expect("updated at")
+            .with_timezone(&Utc);
+
+        let note = store
+            .upsert_synced_note(
+                "remote-note",
+                "Remote title",
+                "Remote body",
+                "Inbox",
+                created_at,
+                updated_at,
+            )
+            .expect("upsert synced note");
+
+        assert_eq!(note.id, "remote-note");
+        assert_eq!(note.title, "Remote title");
+        assert_eq!(note.content, "Remote body");
+        assert_eq!(note.category, "Inbox");
+        assert_eq!(note.created_at, created_at);
+        assert_eq!(note.updated_at, updated_at);
+
+        let loaded = store.read_note("remote-note").expect("read synced note");
+        assert_eq!(loaded, note);
+    }
+
+    #[test]
+    fn deletes_synced_note_idempotently() {
+        let store = NoteStore::new(test_root("sync-delete"));
+        let note = store
+            .create_note(SaveNoteRequest {
+                title: "Local".into(),
+                content: "body".into(),
+                category: String::new(),
+            })
+            .expect("create note");
+
+        store
+            .delete_synced_note(&note.id)
+            .expect("delete existing synced note");
+        store
+            .delete_synced_note(&note.id)
+            .expect("delete missing synced note");
+
+        assert!(store.read_note(&note.id).is_err());
     }
 
     #[test]

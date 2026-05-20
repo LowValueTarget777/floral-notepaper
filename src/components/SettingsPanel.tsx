@@ -11,6 +11,7 @@ import {
   normalizeTileColor,
 } from "../features/settings/tileColor";
 import { applyTheme, watchSystemTheme } from "../features/settings/theme";
+import type { SyncStatus } from "../features/sync/types";
 import { SlidingButtonGroup } from "./SlidingButtonGroup";
 
 const tileColorModes: Array<{ value: TileColorMode; label: string }> = [
@@ -23,6 +24,11 @@ interface SettingsPanelProps {
   onChange: (config: AppConfig) => void;
   onChooseNotesDir: () => void;
   onClose: () => void;
+  syncStatus?: SyncStatus | null;
+  syncFeedback?: { tone: "success" | "error"; message: string } | null;
+  syncBusy?: boolean;
+  onSyncNow?: () => void;
+  onTestSyncConnection?: () => void;
 }
 
 const themeOptions: Array<{ value: ThemeOption; label: string }> = [
@@ -42,6 +48,11 @@ export function SettingsPanel({
   onChange,
   onChooseNotesDir,
   onClose,
+  syncStatus = null,
+  syncFeedback = null,
+  syncBusy = false,
+  onSyncNow,
+  onTestSyncConnection,
 }: SettingsPanelProps) {
   const setConfigValue = <Key extends keyof AppConfig>(
     key: Key,
@@ -93,9 +104,72 @@ export function SettingsPanel({
         </section>
 
         <section className="space-y-2">
-          <label className="block text-[11px] font-body text-ink-faint">
-            笔记目录
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="block text-[11px] font-body text-ink-faint">同步</label>
+            <span className="text-[10px] text-ink-ghost font-mono">
+              {syncStatusText(syncStatus, syncFeedback)}
+            </span>
+          </div>
+          <ToggleRow
+            label="启用自动同步"
+            checked={config.syncEnabled}
+            onChange={(checked) => setConfigValue("syncEnabled", checked)}
+          />
+          <input
+            type="url"
+            value={config.syncServerUrl}
+            onChange={(event) => setConfigValue("syncServerUrl", event.target.value)}
+            placeholder="https://notes.example.com"
+            spellCheck={false}
+            className="w-full h-8 px-2.5 rounded-lg bg-paper-warm/70 border border-paper-deep/40 text-[12px] font-mono text-ink-soft outline-none"
+          />
+          <p className="text-[10px] text-ink-ghost leading-relaxed">
+            例如 https://notes.example.com、http://127.0.0.1:8787、http://[::1]:8787
+          </p>
+          <input
+            type="password"
+            value={config.syncToken}
+            onChange={(event) => setConfigValue("syncToken", event.target.value)}
+            placeholder="Bearer token"
+            spellCheck={false}
+            className="w-full h-8 px-2.5 rounded-lg bg-paper-warm/70 border border-paper-deep/40 text-[12px] font-mono text-ink-soft outline-none"
+          />
+          {syncStatus?.lastError && (
+            <p className="text-[11px] text-red-400 leading-relaxed">
+              {syncStatus.lastError}
+            </p>
+          )}
+          {syncFeedback && !syncStatus?.lastError && (
+            <p
+              className={`text-[11px] leading-relaxed ${
+                syncFeedback.tone === "success" ? "text-bamboo" : "text-red-400"
+              }`}
+            >
+              {syncFeedback.message}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onTestSyncConnection}
+              disabled={syncBusy || !config.syncServerUrl || !config.syncToken}
+              className="h-8 px-3 rounded-lg border border-paper-deep/45 text-[11px] text-ink-faint hover:text-bamboo hover:bg-bamboo-mist/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              测试连接
+            </button>
+            <button
+              type="button"
+              onClick={onSyncNow}
+              disabled={syncBusy || !config.syncServerUrl || !config.syncToken}
+              className="h-8 px-3 rounded-lg border border-paper-deep/45 text-[11px] text-ink-faint hover:text-bamboo hover:bg-bamboo-mist/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              立即同步
+            </button>
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <label className="block text-[11px] font-body text-ink-faint">笔记目录</label>
           <div className="flex gap-2">
             <input
               type="text"
@@ -275,6 +349,18 @@ interface ToggleRowProps {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
+}
+
+function syncStatusText(
+  status: SyncStatus | null,
+  feedback: { tone: "success" | "error"; message: string } | null = null,
+): string {
+  if (feedback?.tone === "success" && !status?.lastSyncAt) return "连接成功";
+  if (!status) return "未同步";
+  if (status.lastError) return "同步失败";
+  if (status.lastSyncAt) return `已同步 ${new Date(status.lastSyncAt).toLocaleString()}`;
+  if (status.configured) return "待同步";
+  return "未配置";
 }
 
 function ToggleRow({ label, checked, onChange }: ToggleRowProps) {

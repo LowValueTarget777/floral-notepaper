@@ -43,6 +43,9 @@ describe("settings api", () => {
       externalFileAutoSave: true,
       rememberSurfaceSize: true,
       tileCtrlClose: true,
+      syncEnabled: false,
+      syncServerUrl: "",
+      syncToken: "",
     };
     mockedInvoke.mockResolvedValue(config);
 
@@ -68,6 +71,9 @@ describe("settings api", () => {
       externalFileAutoSave: true,
       rememberSurfaceSize: true,
       tileCtrlClose: true,
+      syncEnabled: true,
+      syncServerUrl: "https://notes.example.com",
+      syncToken: "secret-token",
     };
     mockedInvoke.mockResolvedValue(config);
 

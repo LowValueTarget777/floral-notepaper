@@ -22,4 +22,7 @@ export interface AppConfig {
   tileCtrlClose: boolean;
   surfaceWidth?: number;
   surfaceHeight?: number;
+  syncEnabled: boolean;
+  syncServerUrl: string;
+  syncToken: string;
 }

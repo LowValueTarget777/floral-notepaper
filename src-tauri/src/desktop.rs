@@ -1285,8 +1285,12 @@ mod tests {
             surface_font_size: 14,
             external_file_auto_save: true,
             remember_surface_size: true,
+            tile_ctrl_close: true,
             surface_width: None,
             surface_height: None,
+            sync_enabled: false,
+            sync_server_url: String::new(),
+            sync_token: String::new(),
         };
         let next = AppConfig {
             notes_dir: "D:\\other-notes".into(),
@@ -1303,8 +1307,12 @@ mod tests {
             surface_font_size: 16,
             external_file_auto_save: true,
             remember_surface_size: true,
+            tile_ctrl_close: true,
             surface_width: None,
             surface_height: None,
+            sync_enabled: true,
+            sync_server_url: "https://notes.example.com".into(),
+            sync_token: "secret-token".into(),
         };
 
         assert_eq!(
