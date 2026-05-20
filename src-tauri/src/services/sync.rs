@@ -1,11 +1,9 @@
-use crate::services::notes::{default_store, AppConfig, AppError, Note, NoteStore, SaveNoteRequest};
+use crate::services::notes::{
+    default_store, AppConfig, AppError, Note, NoteStore, SaveNoteRequest,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    fs,
-    sync::Arc,
-};
+use std::{collections::HashMap, fs, sync::Arc};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{mpsc, Mutex};
 use uuid::Uuid;
@@ -697,10 +695,7 @@ async fn push_changes(
         .map_err(sync_transport_error)
 }
 
-async fn wait_for_remote_change(
-    config: &AppConfig,
-    since: u64,
-) -> Result<WaitResponse, AppError> {
+async fn wait_for_remote_change(config: &AppConfig, since: u64) -> Result<WaitResponse, AppError> {
     let client = reqwest::Client::new();
     client
         .get(sync_endpoint(config, "/v1/wait")?)
@@ -929,7 +924,8 @@ mod tests {
             sync_token: "secret".into(),
         };
 
-        let error = tauri::async_runtime::block_on(request_health(&config)).expect_err("invalid url");
+        let error =
+            tauri::async_runtime::block_on(request_health(&config)).expect_err("invalid url");
 
         assert_eq!(
             error.message,
