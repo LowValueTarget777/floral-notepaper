@@ -27,8 +27,8 @@ interface SettingsPanelProps {
   syncStatus?: SyncStatus | null;
   syncFeedback?: { tone: "success" | "error"; message: string } | null;
   syncBusy?: boolean;
-  onSyncNow?: () => void;
-  onTestSyncConnection?: () => void;
+  onSyncNow: () => void;
+  onTestSyncConnection: () => void;
 }
 
 const themeOptions: Array<{ value: ThemeOption; label: string }> = [
@@ -115,18 +115,27 @@ export function SettingsPanel({
             checked={config.syncEnabled}
             onChange={(checked) => setConfigValue("syncEnabled", checked)}
           />
+          <label htmlFor="sync-server-url" className="block text-[11px] font-body text-ink-faint">
+            同步服务器地址
+          </label>
           <input
+            id="sync-server-url"
             type="url"
             value={config.syncServerUrl}
             onChange={(event) => setConfigValue("syncServerUrl", event.target.value)}
             placeholder="https://notes.example.com"
             spellCheck={false}
+            aria-describedby="sync-server-url-help"
             className="w-full h-8 px-2.5 rounded-lg bg-paper-warm/70 border border-paper-deep/40 text-[12px] font-mono text-ink-soft outline-none"
           />
-          <p className="text-[10px] text-ink-ghost leading-relaxed">
+          <p id="sync-server-url-help" className="text-[10px] text-ink-ghost leading-relaxed">
             例如 https://notes.example.com、http://127.0.0.1:8787、http://[::1]:8787
           </p>
+          <label htmlFor="sync-token" className="block text-[11px] font-body text-ink-faint">
+            同步令牌
+          </label>
           <input
+            id="sync-token"
             type="password"
             value={config.syncToken}
             onChange={(event) => setConfigValue("syncToken", event.target.value)}

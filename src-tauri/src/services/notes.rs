@@ -216,7 +216,6 @@ impl NoteStore {
                 .exists()
         });
         metadata.sort_by_key(|note| std::cmp::Reverse(note.updated_at));
-        metadata.sort_by_key(|note| std::cmp::Reverse(note.updated_at));
         Ok(metadata)
     }
 
