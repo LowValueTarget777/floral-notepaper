@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import {
-  createNote,
-  getErrorMessage,
-  getNote,
-  listNotes,
-  updateNote,
-} from "../features/notes/api";
+import { createNote, getErrorMessage, getNote, listNotes, updateNote } from "../features/notes/api";
 import type { Note, NoteMetadata } from "../features/notes/types";
 import {
   countNoteChars,
@@ -94,9 +88,7 @@ function SurfaceResizeHandles() {
           data-resize-direction={handle.direction}
           onMouseDown={(event) => {
             event.stopPropagation();
-            void startCurrentWindowResize(handle.direction).catch(
-              () => undefined,
-            );
+            void startCurrentWindowResize(handle.direction).catch(() => undefined);
           }}
           className={`absolute ${handle.size} opacity-0 ${handle.className}`}
         />
@@ -111,8 +103,7 @@ export function NotePad({
   initialAutoSave = true,
   initialTileColor = DEFAULT_TILE_COLOR,
 }: NotePadProps) {
-  const [surfaceMode, setSurfaceMode] =
-    useState<NoteSurfaceMode>(initialSurfaceMode);
+  const [surfaceMode, setSurfaceMode] = useState<NoteSurfaceMode>(initialSurfaceMode);
   const [mode, setMode] = useState<OpenMode>("new");
   const [notes, setNotes] = useState<NoteMetadata[]>([]);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -121,13 +112,11 @@ export function NotePad({
   const [hoveredNote, setHoveredNote] = useState<string | null>(null);
   const [status, setStatus] = useState("空");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [noteSurfaceAutoSave, setNoteSurfaceAutoSave] =
-    useState(initialAutoSave);
-  const [tileColorRaw, setTileColorRaw] = useState(
-    normalizeTileColor(initialTileColor),
-  );
+  const [noteSurfaceAutoSave, setNoteSurfaceAutoSave] = useState(initialAutoSave);
+  const [tileColorRaw, setTileColorRaw] = useState(normalizeTileColor(initialTileColor));
   const [tileColorMode, setTileColorMode] = useState<TileColorMode>("system");
   const [surfaceFontSize, setSurfaceFontSize] = useState(14);
+  const [tileRenderMarkdown, setTileRenderMarkdown] = useState(false);
   const [tileColor, setTileColor] = useState(() =>
     resolveTileColor("system", normalizeTileColor(initialTileColor)),
   );
@@ -162,13 +151,11 @@ export function NotePad({
         if (!cancelled) {
           setNoteSurfaceAutoSave(loadedConfig.noteSurfaceAutoSave);
           setSurfaceFontSize(loadedConfig.surfaceFontSize ?? 14);
+          setTileRenderMarkdown(loadedConfig.tileRenderMarkdown ?? false);
           setTileColorRaw(normalizeTileColor(loadedConfig.tileColor));
           setTileColorMode(loadedConfig.tileColorMode ?? "system");
           setTileColor(
-            resolveTileColor(
-              loadedConfig.tileColorMode ?? "system",
-              loadedConfig.tileColor,
-            ),
+            resolveTileColor(loadedConfig.tileColorMode ?? "system", loadedConfig.tileColor),
           );
         }
         if (initialNoteId) {
@@ -218,6 +205,7 @@ export function NotePad({
       tileColor?: string;
       tileColorMode?: TileColorMode;
       surfaceFontSize?: number;
+      tileRenderMarkdown?: boolean;
     }>("config-changed", (event) => {
       const mode = event.payload.tileColorMode ?? tileColorMode;
       const raw = event.payload.tileColor ?? tileColorRaw;
@@ -225,6 +213,8 @@ export function NotePad({
       setTileColorRaw(normalizeTileColor(raw));
       setTileColor(resolveTileColor(mode, raw));
       if (event.payload.surfaceFontSize != null) setSurfaceFontSize(event.payload.surfaceFontSize);
+      if (event.payload.tileRenderMarkdown != null)
+        setTileRenderMarkdown(event.payload.tileRenderMarkdown);
     });
     return () => {
       void unlisten.then((fn) => fn());
@@ -288,9 +278,7 @@ export function NotePad({
       const next = exists
         ? current.map((item) => (item.id === note.id ? metadata : item))
         : [metadata, ...current];
-      return [...next].sort((left, right) =>
-        right.updatedAt.localeCompare(left.updatedAt),
-      );
+      return [...next].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     });
     setStatus("已保存");
     return note;
@@ -310,9 +298,7 @@ export function NotePad({
       }
 
       const currentBounds = await getCurrentWindowBounds();
-      await animateCurrentWindowBounds(
-        getSurfaceTargetBounds(nextMode, currentBounds),
-      );
+      await animateCurrentWindowBounds(getSurfaceTargetBounds(nextMode, currentBounds));
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     }
@@ -327,10 +313,7 @@ export function NotePad({
 
     window.addEventListener(NOTE_SURFACE_MODE_EVENT, handleSurfaceModeRequest);
     return () => {
-      window.removeEventListener(
-        NOTE_SURFACE_MODE_EVENT,
-        handleSurfaceModeRequest,
-      );
+      window.removeEventListener(NOTE_SURFACE_MODE_EVENT, handleSurfaceModeRequest);
     };
   }, [switchSurfaceMode]);
 
@@ -429,15 +412,9 @@ export function NotePad({
       void switchSurfaceMode("pad");
     }
 
-    window.addEventListener(
-      NOTE_SURFACE_ACTION_EVENT,
-      handleSurfaceActionRequest,
-    );
+    window.addEventListener(NOTE_SURFACE_ACTION_EVENT, handleSurfaceActionRequest);
     return () => {
-      window.removeEventListener(
-        NOTE_SURFACE_ACTION_EVENT,
-        handleSurfaceActionRequest,
-      );
+      window.removeEventListener(NOTE_SURFACE_ACTION_EVENT, handleSurfaceActionRequest);
     };
   }, [copyTileContent, handleClose, handleSave, switchSurfaceMode]);
 
@@ -485,6 +462,7 @@ export function NotePad({
           content={errorMessage || content}
           color={tileColor}
           fontSize={surfaceFontSize}
+          renderMarkdown={!errorMessage && tileRenderMarkdown}
           width="100%"
           className="h-full cursor-default"
           data-surface-mode={surfaceMode}
