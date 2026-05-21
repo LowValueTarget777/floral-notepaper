@@ -240,7 +240,21 @@ impl NoteStore {
     pub fn list_note_contents(&self) -> Result<Vec<Note>, AppError> {
         self.list_notes()?
             .into_iter()
-            .map(|metadata| self.read_note(&metadata.id))
+            .map(|metadata| {
+                let content = fs::read_to_string(
+                    self.note_path_in_category(&metadata.file_name, &metadata.category),
+                )?;
+                Ok(Note {
+                    id: metadata.id,
+                    title: metadata.title,
+                    file_name: metadata.file_name,
+                    category: metadata.category,
+                    created_at: metadata.created_at,
+                    updated_at: metadata.updated_at,
+                    word_count: metadata.word_count,
+                    content,
+                })
+            })
             .collect()
     }
 

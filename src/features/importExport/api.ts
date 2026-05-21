@@ -43,9 +43,13 @@ function markdownFileName(title: string): string {
 }
 
 function safeFileStem(value: string): string {
-  return value
-    .trim()
-    .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "_")
+  const withoutReserved = value.trim().replace(/[<>:"/\\|?*]+/g, "_");
+  const withoutControls = Array.from(withoutReserved)
+    .map((char) => (char <= "\u001f" ? "_" : char))
+    .join("");
+
+  // Coalesce separators and cap filename length for portability.
+  return withoutControls
     .replace(/\s+/g, "_")
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "")

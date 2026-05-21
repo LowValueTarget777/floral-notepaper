@@ -34,7 +34,7 @@ describe("SettingsPanel", () => {
         syncStatus={{
           enabled: true,
           configured: true,
-          lastRevision: 9,
+          lastRevision: "9",
           lastSyncAt: "2026-05-18T08:00:00Z",
           lastError: null,
         }}
@@ -76,7 +76,7 @@ describe("SettingsPanel", () => {
         syncStatus={{
           enabled: true,
           configured: true,
-          lastRevision: 9,
+          lastRevision: "9",
           lastSyncAt: null,
           lastError: null,
         }}
@@ -95,7 +95,7 @@ describe("SettingsPanel", () => {
         syncStatus={{
           enabled: true,
           configured: true,
-          lastRevision: 9,
+          lastRevision: "9",
           lastSyncAt: null,
           lastError: "无法连接到同步服务器，请检查地址、端口和网络。",
         }}

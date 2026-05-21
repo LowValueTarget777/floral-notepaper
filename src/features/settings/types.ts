@@ -14,6 +14,7 @@ export interface AppConfig {
   noteSurfaceAutoSave: boolean;
   tileColor: string;
   tileColorMode: TileColorMode;
+  tileRenderMarkdown?: boolean;
   theme: ThemeOption;
   fontSize: number;
   surfaceFontSize: number;

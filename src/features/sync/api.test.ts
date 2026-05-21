@@ -15,7 +15,7 @@ describe("sync api", () => {
   });
 
   test("gets sync status through Rust", async () => {
-    const status: SyncStatus = {
+    const status = {
       enabled: true,
       configured: true,
       lastRevision: 12,
@@ -24,7 +24,15 @@ describe("sync api", () => {
     };
     mockedInvoke.mockResolvedValue(status);
 
-    await expect(getSyncStatus()).resolves.toBe(status);
+    const expected: SyncStatus = {
+      enabled: true,
+      configured: true,
+      lastRevision: "12",
+      lastSyncAt: "2026-05-18T08:00:00Z",
+      lastError: null,
+    };
+
+    await expect(getSyncStatus()).resolves.toEqual(expected);
 
     expect(invoke).toHaveBeenCalledWith("sync_status");
   });
@@ -38,7 +46,13 @@ describe("sync api", () => {
       lastError: null,
     });
 
-    await syncNow();
+    await expect(syncNow()).resolves.toEqual({
+      enabled: false,
+      configured: true,
+      lastRevision: "13",
+      lastSyncAt: "2026-05-18T08:01:00Z",
+      lastError: null,
+    });
 
     expect(invoke).toHaveBeenCalledWith("sync_now");
   });
@@ -52,7 +66,13 @@ describe("sync api", () => {
       lastError: null,
     });
 
-    await testSyncConnection();
+    await expect(testSyncConnection()).resolves.toEqual({
+      enabled: false,
+      configured: true,
+      lastRevision: "0",
+      lastSyncAt: null,
+      lastError: null,
+    });
 
     expect(invoke).toHaveBeenCalledWith("sync_test_connection");
   });

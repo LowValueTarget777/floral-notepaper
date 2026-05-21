@@ -3,7 +3,7 @@ use crate::services::notes::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, sync::Arc};
+use std::{collections::HashMap, fs, sync::Arc, time::Duration};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{mpsc, Mutex};
 use uuid::Uuid;
@@ -181,7 +181,8 @@ pub async fn test_connection(
     config: &AppConfig,
 ) -> Result<SyncStatus, AppError> {
     let mut state = load_state(store)?;
-    let result = request_health(config).await;
+    let client = sync_http_client()?;
+    let result = request_health(&client, config).await;
     match result {
         Ok(()) => {
             state.last_error = None;
@@ -291,7 +292,10 @@ async fn auto_sync_worker(
                     None => break,
                 }
             }
-            wait_result = wait_for_remote_change(&config, state.last_revision) => {
+            wait_result = async {
+                let client = sync_http_client()?;
+                wait_for_remote_change(&client, &config, state.last_revision).await
+            } => {
                 match wait_result {
                     Ok(response) if response.changed && response.revision > state.last_revision => {
                         let _ = run_sync_operation(&app, Some(&controller)).await;
@@ -358,7 +362,8 @@ async fn sync_inner(
     config: &AppConfig,
     state: &mut SyncState,
 ) -> Result<(), AppError> {
-    let remote = fetch_changes(config, state.last_revision).await?;
+    let client = sync_http_client()?;
+    let remote = fetch_changes(&client, config, state.last_revision).await?;
     for change in &remote.changes {
         apply_remote_change(store, state, &change.note)?;
         remember_remote_change(state, &change.note);
@@ -370,7 +375,7 @@ async fn sync_inner(
         return Ok(());
     }
 
-    let pushed = push_changes(config, &state.device_id, local_changes.clone()).await?;
+    let pushed = push_changes(&client, config, &state.device_id, local_changes.clone()).await?;
     for change in local_changes {
         remember_local_change(state, change);
     }
@@ -554,10 +559,15 @@ fn save_state(store: &NoteStore, state: &SyncState) -> Result<(), AppError> {
     }
     let temp_path = path.with_extension("json.tmp");
     fs::write(&temp_path, serde_json::to_string_pretty(state)?)?;
-    if path.exists() {
-        fs::remove_file(&path)?;
+    if let Err(rename_error) = fs::rename(&temp_path, &path) {
+        // On Windows, rename fails when destination exists. Retry with a tiny window.
+        if path.exists() {
+            fs::remove_file(&path)?;
+            fs::rename(&temp_path, &path)?;
+        } else {
+            return Err(rename_error.into());
+        }
     }
-    fs::rename(temp_path, path)?;
     Ok(())
 }
 
@@ -643,8 +653,18 @@ fn stable_hash<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
     format!("{hash:016x}")
 }
 
-async fn request_health(config: &AppConfig) -> Result<(), AppError> {
-    let client = reqwest::Client::new();
+fn sync_http_client() -> Result<reqwest::Client, AppError> {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|error| AppError {
+            code: "syncTransport".into(),
+            message: format!("同步客户端初始化失败：{error}"),
+        })
+}
+
+async fn request_health(client: &reqwest::Client, config: &AppConfig) -> Result<(), AppError> {
     client
         .get(sync_endpoint(config, "/health")?)
         .bearer_auth(config.sync_token.trim())
@@ -656,8 +676,11 @@ async fn request_health(config: &AppConfig) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn fetch_changes(config: &AppConfig, since: u64) -> Result<ChangesResponse, AppError> {
-    let client = reqwest::Client::new();
+async fn fetch_changes(
+    client: &reqwest::Client,
+    config: &AppConfig,
+    since: u64,
+) -> Result<ChangesResponse, AppError> {
     client
         .get(sync_endpoint(config, "/v1/changes")?)
         .query(&[("since", since)])
@@ -673,11 +696,11 @@ async fn fetch_changes(config: &AppConfig, since: u64) -> Result<ChangesResponse
 }
 
 async fn push_changes(
+    client: &reqwest::Client,
     config: &AppConfig,
     device_id: &str,
     changes: Vec<SyncChange>,
 ) -> Result<PushResponse, AppError> {
-    let client = reqwest::Client::new();
     client
         .post(sync_endpoint(config, "/v1/push")?)
         .bearer_auth(config.sync_token.trim())
@@ -695,8 +718,11 @@ async fn push_changes(
         .map_err(sync_transport_error)
 }
 
-async fn wait_for_remote_change(config: &AppConfig, since: u64) -> Result<WaitResponse, AppError> {
-    let client = reqwest::Client::new();
+async fn wait_for_remote_change(
+    client: &reqwest::Client,
+    config: &AppConfig,
+    since: u64,
+) -> Result<WaitResponse, AppError> {
     client
         .get(sync_endpoint(config, "/v1/wait")?)
         .query(&[("since", since), ("timeoutSeconds", WAIT_TIMEOUT_SECONDS)])
@@ -924,8 +950,9 @@ mod tests {
             sync_token: "secret".into(),
         };
 
-        let error =
-            tauri::async_runtime::block_on(request_health(&config)).expect_err("invalid url");
+        let client = sync_http_client().expect("sync http client");
+        let error = tauri::async_runtime::block_on(request_health(&client, &config))
+            .expect_err("invalid url");
 
         assert_eq!(
             error.message,
