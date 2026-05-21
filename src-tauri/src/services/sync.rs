@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    fs, io,
+    fs,
     path::Path,
     sync::{Arc, OnceLock},
     time::Duration,
@@ -614,7 +614,7 @@ fn replace_file_atomically_windows(temp_path: &Path, path: &Path) -> Result<(), 
     };
 
     if replaced == 0 {
-        return Err(io::Error::last_os_error().into());
+        return Err(std::io::Error::last_os_error().into());
     }
 
     Ok(())
@@ -1086,13 +1086,17 @@ mod tests {
     #[test]
     fn save_state_replaces_existing_sync_state_file() {
         let store = NoteStore::new(test_root("save-sync-state"));
-        let mut first = SyncState::default();
-        first.last_revision = 1;
+        let first = SyncState {
+            last_revision: 1,
+            ..SyncState::default()
+        };
         save_state(&store, &first).expect("save initial state");
 
-        let mut second = first.clone();
-        second.last_revision = 2;
-        second.last_error = Some("network".into());
+        let second = SyncState {
+            last_revision: 2,
+            last_error: Some("network".into()),
+            ..first.clone()
+        };
         save_state(&store, &second).expect("replace existing state");
 
         let loaded = load_state(&store).expect("load replaced state");
