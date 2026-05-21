@@ -332,6 +332,8 @@ impl NoteStore {
         self.read_note_from_metadata(metadata)
     }
 
+    // Sync compares hashes against full note bodies, so it needs a batch API that returns
+    // complete notes instead of metadata-only entries.
     pub fn list_note_contents(&self) -> Result<Vec<Note>, AppError> {
         self.list_notes()?
             .into_iter()
@@ -739,6 +741,8 @@ impl NoteStore {
         }
     }
 
+    // Keep single-note reads and batch content scans on the same path so note assembly stays
+    // consistent if fields or storage details change later.
     fn read_note_from_metadata(&self, metadata: NoteMetadata) -> Result<Note, AppError> {
         let content = fs::read_to_string(
             self.note_path_in_category(&metadata.file_name, &metadata.category),

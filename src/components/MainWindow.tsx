@@ -64,6 +64,8 @@ export type NoteRefreshAction =
   | { type: "clear" }
   | { type: "load"; noteId: string };
 
+// Keep note refresh decisions in one place so note list updates and sync-driven reloads
+// follow the same rules without overwriting unsaved local edits.
 export function resolveNoteRefreshAction(
   loadedNotes: NoteMetadata[],
   options: {
@@ -626,6 +628,8 @@ export function MainWindow({
   }, [applySelectedNoteRefresh, refreshNotes]);
 
   useEffect(() => {
+    // Sync status changes do not imply note content changed, so update the status banner
+    // directly instead of forcing another note list refresh.
     const unlisten = listen<SyncStatus>("sync-status-changed", (event) => {
       setSyncStatus(event.payload);
     });
