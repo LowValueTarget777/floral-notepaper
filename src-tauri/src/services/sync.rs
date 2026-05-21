@@ -19,6 +19,7 @@ pub const SYNC_STATUS_CHANGED_EVENT: &str = "sync-status-changed";
 const WAIT_TIMEOUT_SECONDS: u64 = 25;
 const SYNC_CONNECT_TIMEOUT_SECONDS: u64 = 5;
 const SYNC_HTTP_TIMEOUT_SECONDS: u64 = WAIT_TIMEOUT_SECONDS + 5;
+const SYNC_CONFIG_REQUIRED_MESSAGE: &str = "请先填写同步服务器地址和同步令牌。";
 
 static SYNC_HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
@@ -209,9 +210,14 @@ pub async fn test_connection(
 pub async fn sync_now(store: &NoteStore, config: &AppConfig) -> Result<SyncStatus, AppError> {
     let mut state = load_state(store)?;
     if !is_configured(config) {
-        state.last_error = Some("Sync server URL and token are required".into());
+        let error = AppError {
+            code: "syncConfigIncomplete".into(),
+            message: SYNC_CONFIG_REQUIRED_MESSAGE.into(),
+            details: Default::default(),
+        };
+        state.last_error = Some(error.message.clone());
         save_state(store, &state)?;
-        return Ok(status_from_state(config, &state));
+        return Err(error);
     }
 
     match sync_inner(store, config, &mut state).await {
@@ -1009,6 +1015,48 @@ mod tests {
         assert_eq!(
             error.message,
             "同步服务器地址格式不正确，请填写完整地址，例如 http://127.0.0.1:8787 或 http://[::1]:8787。"
+        );
+    }
+
+    #[test]
+    fn returns_error_when_sync_config_is_incomplete() {
+        let store = NoteStore::new(test_root("sync-config-incomplete"));
+        let config = AppConfig {
+            locale: "zh-CN".into(),
+            notes_dir: String::new(),
+            global_shortcut: "Ctrl+Space".into(),
+            close_to_tray: false,
+            autostart: false,
+            default_view_mode: "split".into(),
+            note_auto_save: true,
+            note_surface_auto_save: true,
+            tile_color: "#f6f3ec".into(),
+            tile_color_mode: "system".into(),
+            theme: "system".into(),
+            font_size: 14,
+            surface_font_size: 14,
+            external_file_auto_save: true,
+            remember_surface_size: true,
+            tile_ctrl_close: true,
+            tile_render_markdown: false,
+            surface_width: None,
+            surface_height: None,
+            toggle_visibility_shortcut: String::new(),
+            sync_enabled: true,
+            sync_server_url: String::new(),
+            sync_token: String::new(),
+        };
+
+        let error = tauri::async_runtime::block_on(sync_now(&store, &config))
+            .expect_err("incomplete sync config should fail");
+
+        assert_eq!(error.code, "syncConfigIncomplete");
+        assert_eq!(error.message, SYNC_CONFIG_REQUIRED_MESSAGE);
+
+        let status = status(&store, &config).expect("status after failed sync");
+        assert_eq!(
+            status.last_error.as_deref(),
+            Some(SYNC_CONFIG_REQUIRED_MESSAGE)
         );
     }
 

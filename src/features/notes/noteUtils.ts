@@ -1,8 +1,6 @@
 import type { TFunction } from "i18next";
+import { fallbackTranslate } from "./fallbackTranslate";
 import type { Note, NoteMetadata } from "./types";
-
-const fallbackTranslate = ((key: string, options?: { defaultValue?: string }) =>
-  String(options?.defaultValue ?? key)) as TFunction;
 
 export function getDisplayTitle(
   note: Pick<NoteMetadata, "title" | "preview">,

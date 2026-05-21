@@ -639,6 +639,14 @@ export function MainWindow({
   }, []);
 
   useEffect(() => {
+    function handleFocus() {
+      void refreshNotes();
+    }
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [refreshNotes]);
+
+  useEffect(() => {
     const unlisten = listen<string>("open-external-file", (event) => {
       void loadExternalFile(event.payload);
     });

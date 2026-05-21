@@ -225,7 +225,7 @@
       "syncNow": "立即同步",
       "testConnection": "测试连接",
       "token": "同步令牌",
-      "tokenPlaceholder": "Bearer token"
+      "tokenPlaceholder": "输入令牌"
     },
     "theme": {
       "dark": "深色",

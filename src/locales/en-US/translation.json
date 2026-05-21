@@ -225,7 +225,7 @@
       "syncNow": "Sync Now",
       "testConnection": "Test Connection",
       "token": "Sync token",
-      "tokenPlaceholder": "Bearer token"
+      "tokenPlaceholder": "Paste token"
     },
     "theme": {
       "dark": "Dark",

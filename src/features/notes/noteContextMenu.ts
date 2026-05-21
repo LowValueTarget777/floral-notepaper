@@ -1,7 +1,5 @@
 import type { TFunction } from "i18next";
-
-const fallbackTranslate = ((key: string, options?: { defaultValue?: string }) =>
-  String(options?.defaultValue ?? key)) as TFunction;
+import { fallbackTranslate } from "./fallbackTranslate";
 
 export type NoteContextMenuAction = "export" | "move" | "delete";
 
@@ -31,8 +29,4 @@ export function getNoteContextMenuItems(
   ];
 }
 
-export const noteContextMenuItems: NoteContextMenuItem[] = [
-  { action: "export", label: "导出 Markdown" },
-  { action: "move", label: "移动到分类…" },
-  { action: "delete", label: "删除笔记", tone: "danger" },
-];
+export const noteContextMenuItems: NoteContextMenuItem[] = getNoteContextMenuItems();
