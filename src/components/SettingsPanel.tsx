@@ -344,7 +344,9 @@ function ShortcutRecorder({ value, onChange }: ShortcutRecorderProps) {
   const [heldKeys, setHeldKeys] = useState<string[]>([]);
   const recorder = useHotkeyRecorder({
     onRecord: (hotkey) => {
-      if (isValidGlobalShortcut(hotkey)) {
+      if ((hotkey as string) === "") {
+        onChange("");
+      } else if (isValidGlobalShortcut(hotkey)) {
         onChange(hotkeyToConfigString(hotkey));
       }
     },
@@ -417,7 +419,8 @@ function ShortcutRecorder({ value, onChange }: ShortcutRecorderProps) {
         {recorder.isRecording ? (
           <>
             <span className="flex-1 text-left text-bamboo">
-              {liveDisplay || t("settings.shortcut.pressHint", { defaultValue: "按下快捷键..." })}
+              {liveDisplay ||
+                t("settings.shortcut.pressHint", { defaultValue: "按下快捷键；按 Delete 清空。" })}
             </span>
             <span className="text-[10px] text-ink-faint shrink-0">
               {t("settings.shortcut.cancelHint", { defaultValue: "Esc 取消" })}
@@ -425,7 +428,9 @@ function ShortcutRecorder({ value, onChange }: ShortcutRecorderProps) {
           </>
         ) : (
           <>
-            <span className="flex-1 text-left text-ink-soft">{value}</span>
+            <span className={`flex-1 text-left ${value ? "text-ink-soft" : "text-ink-ghost"}`}>
+              {value || t("settings.shortcut.notSet", { defaultValue: "未设置" })}
+            </span>
             <span className="text-[10px] text-ink-ghost shrink-0">
               {t("settings.shortcut.clickToRecord", { defaultValue: "点击录制" })}
             </span>

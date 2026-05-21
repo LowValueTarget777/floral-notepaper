@@ -198,7 +198,8 @@
     "shortcut": {
       "cancelHint": "Esc to cancel",
       "clickToRecord": "Click to record",
-      "pressHint": "Press shortcut..."
+      "notSet": "Not set",
+      "pressHint": "Press shortcut...; press Delete to clear."
     },
     "theme": {
       "dark": "Dark",

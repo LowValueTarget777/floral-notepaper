@@ -198,7 +198,8 @@
     "shortcut": {
       "cancelHint": "Esc 取消",
       "clickToRecord": "點擊錄製",
-      "pressHint": "按下快捷鍵..."
+      "notSet": "未設定",
+      "pressHint": "按下快捷鍵；按 Delete 清除。"
     },
     "theme": {
       "dark": "深色",

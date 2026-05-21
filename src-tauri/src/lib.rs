@@ -160,12 +160,12 @@ fn config_save(app: AppHandle, config: AppConfig) -> Result<AppConfig, AppError>
             },
         }
     })?;
-    store.save_config(config.clone())?;
-    if let Err(error) = desktop::refresh_shell_state(&app, &config) {
+    let saved = store.save_config(config)?;
+    if let Err(error) = desktop::refresh_shell_state(&app, &saved) {
         eprintln!("failed to refresh desktop shell state: {error}");
     }
-    let _ = app.emit("config-changed", &config);
-    Ok(config)
+    let _ = app.emit("config-changed", &saved);
+    Ok(saved)
 }
 
 #[tauri::command]
