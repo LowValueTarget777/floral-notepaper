@@ -376,7 +376,6 @@ pub fn refresh_shell_state(app: &AppHandle, config: &AppConfig) -> Result<(), Bo
     refresh_tray_menu(app, config)?;
     Ok(())
 }
-
 pub fn shortcut_from_config(value: &str) -> Option<ShortcutSpec> {
     let parts: Vec<_> = value
         .split('+')
@@ -661,7 +660,6 @@ fn setup_tray(app: &mut App) -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
-
 fn handle_tray_menu_event(app: &AppHandle, id: &str) -> Result<(), Box<dyn Error>> {
     match tray_menu_action(id) {
         Some(TrayMenuAction::ShowMain) => show_main_window(app)?,
@@ -1563,6 +1561,9 @@ mod tests {
             surface_width: None,
             surface_height: None,
             toggle_visibility_shortcut: "Ctrl+Space".into(),
+            sync_enabled: false,
+            sync_server_url: String::new(),
+            sync_token: String::new(),
         };
 
         let error = match shortcut_bindings_from_config(&config) {
@@ -1604,6 +1605,9 @@ mod tests {
             surface_width: None,
             surface_height: None,
             toggle_visibility_shortcut: String::new(),
+            sync_enabled: false,
+            sync_server_url: String::new(),
+            sync_token: String::new(),
         };
         let next = AppConfig {
             locale: "en-US".into(),
@@ -1626,6 +1630,9 @@ mod tests {
             surface_width: None,
             surface_height: None,
             toggle_visibility_shortcut: "Ctrl+Shift+H".into(),
+            sync_enabled: true,
+            sync_server_url: "https://notes.example.com".into(),
+            sync_token: "secret-token".into(),
         };
 
         assert_eq!(

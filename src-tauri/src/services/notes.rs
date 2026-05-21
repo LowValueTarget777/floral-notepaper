@@ -45,6 +45,12 @@ pub struct AppConfig {
     pub surface_height: Option<u32>,
     #[serde(default = "default_toggle_visibility_shortcut")]
     pub toggle_visibility_shortcut: String,
+    #[serde(default = "default_sync_enabled")]
+    pub sync_enabled: bool,
+    #[serde(default = "default_sync_server_url")]
+    pub sync_server_url: String,
+    #[serde(default = "default_sync_token")]
+    pub sync_token: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -278,6 +284,10 @@ impl NoteStore {
         self.base_dir.join("config.json")
     }
 
+    pub fn sync_state_path(&self) -> PathBuf {
+        self.base_dir.join("sync_state.json")
+    }
+
     pub fn load_config(&self) -> Result<AppConfig, AppError> {
         self.ensure_base_dir()?;
         let path = self.config_path();
@@ -319,19 +329,14 @@ impl NoteStore {
     pub fn read_note(&self, id: &str) -> Result<Note, AppError> {
         self.ensure_storage()?;
         let metadata = self.find_metadata(id)?;
-        let content = fs::read_to_string(
-            self.note_path_in_category(&metadata.file_name, &metadata.category),
-        )?;
-        Ok(Note {
-            id: metadata.id,
-            title: metadata.title,
-            file_name: metadata.file_name,
-            category: metadata.category,
-            created_at: metadata.created_at,
-            updated_at: metadata.updated_at,
-            word_count: metadata.word_count,
-            content,
-        })
+        self.read_note_from_metadata(metadata)
+    }
+
+    pub fn list_note_contents(&self) -> Result<Vec<Note>, AppError> {
+        self.list_notes()?
+            .into_iter()
+            .map(|metadata| self.read_note_from_metadata(metadata))
+            .collect()
     }
 
     pub fn create_note(&self, request: SaveNoteRequest) -> Result<Note, AppError> {
@@ -371,6 +376,78 @@ impl NoteStore {
             word_count,
             content: request.content,
         })
+    }
+
+    pub fn upsert_synced_note(
+        &self,
+        id: &str,
+        title: &str,
+        content: &str,
+        category: &str,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+    ) -> Result<Note, AppError> {
+        self.ensure_storage()?;
+        let mut metadata_file = self.load_metadata()?;
+        let file_name = self.file_name_for(id, title);
+        let note_path = self.note_path_in_category(&file_name, category);
+        if let Some(parent) = note_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&note_path, content)?;
+
+        let word_count = count_words(content);
+        let note_preview = preview(content);
+        if let Some(existing) = metadata_file.notes.iter_mut().find(|note| note.id == id) {
+            let old_path = self.note_path_in_category(&existing.file_name, &existing.category);
+            if old_path.exists() && old_path != note_path {
+                fs::remove_file(old_path)?;
+            }
+            existing.title = title.to_string();
+            existing.file_name = file_name.clone();
+            existing.category = category.to_string();
+            existing.created_at = created_at;
+            existing.updated_at = updated_at;
+            existing.word_count = word_count;
+            existing.preview = note_preview;
+        } else {
+            metadata_file.notes.push(NoteMetadata {
+                id: id.to_string(),
+                title: title.to_string(),
+                file_name: file_name.clone(),
+                category: category.to_string(),
+                created_at,
+                updated_at,
+                word_count,
+                preview: note_preview,
+            });
+        }
+
+        self.save_metadata(&metadata_file)?;
+        Ok(Note {
+            id: id.to_string(),
+            title: title.to_string(),
+            file_name,
+            category: category.to_string(),
+            created_at,
+            updated_at,
+            word_count,
+            content: content.to_string(),
+        })
+    }
+
+    pub fn delete_synced_note(&self, id: &str) -> Result<(), AppError> {
+        self.ensure_storage()?;
+        let mut metadata_file = self.load_metadata()?;
+        let Some(index) = metadata_file.notes.iter().position(|note| note.id == id) else {
+            return Ok(());
+        };
+        let metadata = metadata_file.notes.remove(index);
+        let path = self.note_path_in_category(&metadata.file_name, &metadata.category);
+        if path.exists() {
+            fs::remove_file(path)?;
+        }
+        self.save_metadata(&metadata_file)
     }
 
     pub fn update_note(&self, id: &str, request: SaveNoteRequest) -> Result<Note, AppError> {
@@ -626,6 +703,9 @@ impl NoteStore {
             surface_width: None,
             surface_height: None,
             toggle_visibility_shortcut: default_toggle_visibility_shortcut(),
+            sync_enabled: default_sync_enabled(),
+            sync_server_url: default_sync_server_url(),
+            sync_token: default_sync_token(),
         }
     }
 
@@ -657,6 +737,22 @@ impl NoteStore {
         } else {
             notes_dir.join(category).join(file_name)
         }
+    }
+
+    fn read_note_from_metadata(&self, metadata: NoteMetadata) -> Result<Note, AppError> {
+        let content = fs::read_to_string(
+            self.note_path_in_category(&metadata.file_name, &metadata.category),
+        )?;
+        Ok(Note {
+            id: metadata.id,
+            title: metadata.title,
+            file_name: metadata.file_name,
+            category: metadata.category,
+            created_at: metadata.created_at,
+            updated_at: metadata.updated_at,
+            word_count: metadata.word_count,
+            content,
+        })
     }
 
     fn find_metadata(&self, id: &str) -> Result<NoteMetadata, AppError> {
@@ -914,6 +1010,18 @@ fn default_toggle_visibility_shortcut() -> String {
     String::new()
 }
 
+fn default_sync_enabled() -> bool {
+    false
+}
+
+fn default_sync_server_url() -> String {
+    String::new()
+}
+
+fn default_sync_token() -> String {
+    String::new()
+}
+
 fn default_locale() -> String {
     "zh-CN".into()
 }
@@ -1057,6 +1165,9 @@ mod tests {
             surface_width: None,
             surface_height: None,
             toggle_visibility_shortcut: String::new(),
+            sync_enabled: false,
+            sync_server_url: String::new(),
+            sync_token: String::new(),
         };
 
         store.save_config(saved.clone()).expect("save config");

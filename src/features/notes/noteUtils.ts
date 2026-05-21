@@ -1,9 +1,12 @@
-import { t, type TFunction } from "i18next";
+import type { TFunction } from "i18next";
 import type { Note, NoteMetadata } from "./types";
+
+const fallbackTranslate = ((key: string, options?: { defaultValue?: string }) =>
+  String(options?.defaultValue ?? key)) as TFunction;
 
 export function getDisplayTitle(
   note: Pick<NoteMetadata, "title" | "preview">,
-  translate: TFunction = t,
+  translate: TFunction = fallbackTranslate,
 ): string {
   const title = note.title.trim();
   if (title) return title;
@@ -87,12 +90,16 @@ export function groupNotesByCategory(
   return result;
 }
 
-export function filterNotes(notes: NoteMetadata[], query: string): NoteMetadata[] {
+export function filterNotes(
+  notes: NoteMetadata[],
+  query: string,
+  translate: TFunction = fallbackTranslate,
+): NoteMetadata[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return notes;
 
   return notes.filter((note) => {
-    const haystack = [note.title, note.preview, note.fileName, getDisplayTitle(note)]
+    const haystack = [note.title, note.preview, note.fileName, getDisplayTitle(note, translate)]
       .join(" ")
       .toLowerCase();
     return haystack.includes(normalized);

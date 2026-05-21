@@ -52,6 +52,20 @@ describe("note utilities", () => {
     expect(filterNotes(notes, "   ").map((note) => note.id)).toEqual(["1", "2"]);
   });
 
+  it("filters untitled notes using the active translation", () => {
+    const untitled = [{ ...notes[1], preview: "" }];
+    const translate = ((key: string, options?: { defaultValue?: string }) => {
+      if (key === "common.untitledNote") {
+        return "Untitled Note";
+      }
+      return String(options?.defaultValue ?? key);
+    }) as typeof getDisplayTitle extends (note: NoteMetadata, translate?: infer Translate) => string
+      ? Translate
+      : never;
+
+    expect(filterNotes(untitled, "untitled", translate).map((note) => note.id)).toEqual(["2"]);
+  });
+
   it("includes empty categories from allCategories list", () => {
     const groups = groupNotesByCategory(notes, ["日常", "工作"]);
     const categoryNames = groups.map((g) => g.category);

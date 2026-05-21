@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
-import { MainWindow, runEditorUndo } from "./MainWindow";
+import { MainWindow, resolveNoteRefreshAction, runEditorUndo } from "./MainWindow";
 
 describe("MainWindow settings", () => {
   test("can render the settings panel with the loaded config", () => {
@@ -26,6 +26,9 @@ describe("MainWindow settings", () => {
           tileCtrlClose: true,
           toggleVisibilityShortcut: "",
           tileRenderMarkdown: false,
+          syncEnabled: false,
+          syncServerUrl: "",
+          syncToken: "",
         }}
       />,
     );
@@ -72,5 +75,57 @@ describe("MainWindow editor undo", () => {
     expect(undone).toBe(true);
     expect(focus).toHaveBeenCalledOnce();
     expect(execCommand).toHaveBeenCalledWith("undo");
+  });
+});
+
+describe("MainWindow note refresh selection", () => {
+  test("loads the first remaining note when the selected note disappears", () => {
+    const action = resolveNoteRefreshAction(
+      [
+        {
+          id: "note-b",
+          title: "B",
+          fileName: "note-b.md",
+          category: "",
+          createdAt: "2026-05-20T08:00:00Z",
+          updatedAt: "2026-05-20T08:01:00Z",
+          wordCount: 1,
+          preview: "b",
+        },
+      ],
+      {
+        selectedId: "note-a",
+        isExternal: false,
+        saveState: "saved",
+        selectedUpdatedAt: "2026-05-20T08:00:00Z",
+      },
+    );
+
+    expect(action).toEqual({ type: "load", noteId: "note-b" });
+  });
+
+  test("keeps the current note when local edits are still dirty", () => {
+    const action = resolveNoteRefreshAction(
+      [
+        {
+          id: "note-a",
+          title: "A",
+          fileName: "note-a.md",
+          category: "",
+          createdAt: "2026-05-20T08:00:00Z",
+          updatedAt: "2026-05-20T08:02:00Z",
+          wordCount: 1,
+          preview: "a",
+        },
+      ],
+      {
+        selectedId: "note-a",
+        isExternal: false,
+        saveState: "dirty",
+        selectedUpdatedAt: "2026-05-20T08:00:00Z",
+      },
+    );
+
+    expect(action).toEqual({ type: "keep" });
   });
 });

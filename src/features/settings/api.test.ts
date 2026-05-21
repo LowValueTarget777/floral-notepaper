@@ -41,6 +41,9 @@ describe("settings api", () => {
       tileCtrlClose: true,
       toggleVisibilityShortcut: "",
       tileRenderMarkdown: false,
+      syncEnabled: false,
+      syncServerUrl: "",
+      syncToken: "",
     };
     mockedInvoke.mockResolvedValue(config);
 
@@ -69,6 +72,9 @@ describe("settings api", () => {
       tileCtrlClose: true,
       toggleVisibilityShortcut: "",
       tileRenderMarkdown: false,
+      syncEnabled: true,
+      syncServerUrl: "https://notes.example.com",
+      syncToken: "secret-token",
     };
     mockedInvoke.mockResolvedValue(config);
 

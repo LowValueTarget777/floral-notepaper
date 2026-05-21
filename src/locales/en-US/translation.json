@@ -88,6 +88,13 @@
       "empty": "No notes yet",
       "noResults": "No matching notes"
     },
+    "sync": {
+      "feedback": {
+        "connectionSuccess": "Connection successful. Sync is ready.",
+        "syncComplete": "Sync completed. You now have the latest state.",
+        "syncCompleteAt": "Sync completed. Updated at {{time}}."
+      }
+    },
     "sidebar": {
       "clearSearch": "Clear search",
       "importMarkdown": "Import Markdown",
@@ -200,6 +207,25 @@
       "clickToRecord": "Click to record",
       "notSet": "Not set",
       "pressHint": "Press shortcut...; press Delete to clear."
+    },
+    "sync": {
+      "enable": "Enable auto sync",
+      "label": "Sync",
+      "serverUrl": "Sync server URL",
+      "serverUrlHelp": "For example https://notes.example.com, http://127.0.0.1:8787, or http://[::1]:8787",
+      "serverUrlPlaceholder": "https://notes.example.com",
+      "status": {
+        "connectionSuccess": "Connection successful",
+        "failed": "Sync failed",
+        "notConfigured": "Not configured",
+        "notSynced": "Not synced",
+        "pending": "Pending sync",
+        "syncedAt": "Synced at {{time}}"
+      },
+      "syncNow": "Sync Now",
+      "testConnection": "Test Connection",
+      "token": "Sync token",
+      "tokenPlaceholder": "Bearer token"
     },
     "theme": {
       "dark": "Dark",

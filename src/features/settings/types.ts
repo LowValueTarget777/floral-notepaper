@@ -25,4 +25,7 @@ export interface AppConfig {
   surfaceWidth?: number;
   surfaceHeight?: number;
   toggleVisibilityShortcut: string;
+  syncEnabled: boolean;
+  syncServerUrl: string;
+  syncToken: string;
 }

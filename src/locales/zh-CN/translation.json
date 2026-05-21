@@ -88,6 +88,13 @@
       "empty": "还没有笔记",
       "noResults": "没有匹配的笔记"
     },
+    "sync": {
+      "feedback": {
+        "connectionSuccess": "连接成功，可以开始同步。",
+        "syncComplete": "同步完成，已经拿到最新状态。",
+        "syncCompleteAt": "同步完成，更新时间 {{time}}。"
+      }
+    },
     "sidebar": {
       "clearSearch": "清空搜索",
       "importMarkdown": "导入 Markdown",
@@ -200,6 +207,25 @@
       "clickToRecord": "点击录制",
       "notSet": "未设置",
       "pressHint": "按下快捷键；按 Delete 清空。"
+    },
+    "sync": {
+      "enable": "启用自动同步",
+      "label": "同步",
+      "serverUrl": "同步服务器地址",
+      "serverUrlHelp": "例如 https://notes.example.com、http://127.0.0.1:8787、http://[::1]:8787",
+      "serverUrlPlaceholder": "https://notes.example.com",
+      "status": {
+        "connectionSuccess": "连接成功",
+        "failed": "同步失败",
+        "notConfigured": "未配置",
+        "notSynced": "未同步",
+        "pending": "待同步",
+        "syncedAt": "已同步 {{time}}"
+      },
+      "syncNow": "立即同步",
+      "testConnection": "测试连接",
+      "token": "同步令牌",
+      "tokenPlaceholder": "Bearer token"
     },
     "theme": {
       "dark": "深色",

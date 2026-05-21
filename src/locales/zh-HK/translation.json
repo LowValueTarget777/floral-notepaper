@@ -88,6 +88,13 @@
       "empty": "還沒有筆記",
       "noResults": "沒有符合的筆記"
     },
+    "sync": {
+      "feedback": {
+        "connectionSuccess": "連線成功，可以開始同步。",
+        "syncComplete": "同步完成，已取得最新狀態。",
+        "syncCompleteAt": "同步完成，更新時間 {{time}}。"
+      }
+    },
     "sidebar": {
       "clearSearch": "清除搜尋",
       "importMarkdown": "匯入 Markdown",
@@ -200,6 +207,25 @@
       "clickToRecord": "點擊錄製",
       "notSet": "未設定",
       "pressHint": "按下快捷鍵；按 Delete 清除。"
+    },
+    "sync": {
+      "enable": "啟用自動同步",
+      "label": "同步",
+      "serverUrl": "同步伺服器地址",
+      "serverUrlHelp": "例如 https://notes.example.com、http://127.0.0.1:8787、http://[::1]:8787",
+      "serverUrlPlaceholder": "https://notes.example.com",
+      "status": {
+        "connectionSuccess": "連線成功",
+        "failed": "同步失敗",
+        "notConfigured": "未配置",
+        "notSynced": "未同步",
+        "pending": "待同步",
+        "syncedAt": "已同步 {{time}}"
+      },
+      "syncNow": "立即同步",
+      "testConnection": "測試連線",
+      "token": "同步令牌",
+      "tokenPlaceholder": "Bearer token"
     },
     "theme": {
       "dark": "深色",

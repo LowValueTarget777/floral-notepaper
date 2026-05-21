@@ -3,7 +3,10 @@ pub mod locales;
 pub mod services;
 
 use locales::Locale;
-use services::notes::{default_store, AppConfig, AppError, Note, NoteMetadata, SaveNoteRequest};
+use services::{
+    notes::{default_store, AppConfig, AppError, Note, NoteMetadata, SaveNoteRequest},
+    sync::SyncStatus,
+};
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter};
 
@@ -27,6 +30,7 @@ fn notes_get(id: String) -> Result<Note, AppError> {
 fn notes_create(app: AppHandle, request: SaveNoteRequest) -> Result<Note, AppError> {
     let note = default_store()?.create_note(request)?;
     let _ = app.emit("notes-changed", ());
+    services::sync::request_auto_sync(&app);
     Ok(note)
 }
 
@@ -34,6 +38,7 @@ fn notes_create(app: AppHandle, request: SaveNoteRequest) -> Result<Note, AppErr
 fn notes_update(app: AppHandle, id: String, request: SaveNoteRequest) -> Result<Note, AppError> {
     let note = default_store()?.update_note(&id, request)?;
     let _ = app.emit("notes-changed", ());
+    services::sync::request_auto_sync(&app);
     Ok(note)
 }
 
@@ -41,6 +46,7 @@ fn notes_update(app: AppHandle, id: String, request: SaveNoteRequest) -> Result<
 fn notes_delete(app: AppHandle, id: String) -> Result<(), AppError> {
     default_store()?.delete_note(&id)?;
     let _ = app.emit("notes-changed", ());
+    services::sync::request_auto_sync(&app);
     Ok(())
 }
 
@@ -53,6 +59,7 @@ fn notes_import_markdown(
     let note = default_store()?
         .import_markdown_file(&PathBuf::from(path), &category.unwrap_or_default())?;
     let _ = app.emit("notes-changed", ());
+    services::sync::request_auto_sync(&app);
     Ok(note)
 }
 
@@ -113,6 +120,7 @@ fn categories_list() -> Result<Vec<String>, AppError> {
 fn categories_create(app: AppHandle, name: String) -> Result<(), AppError> {
     default_store()?.create_category(&name)?;
     let _ = app.emit("notes-changed", ());
+    services::sync::request_auto_sync(&app);
     Ok(())
 }
 
@@ -120,6 +128,7 @@ fn categories_create(app: AppHandle, name: String) -> Result<(), AppError> {
 fn categories_rename(app: AppHandle, old_name: String, new_name: String) -> Result<(), AppError> {
     default_store()?.rename_category(&old_name, &new_name)?;
     let _ = app.emit("notes-changed", ());
+    services::sync::request_auto_sync(&app);
     Ok(())
 }
 
@@ -127,6 +136,7 @@ fn categories_rename(app: AppHandle, old_name: String, new_name: String) -> Resu
 fn categories_delete(app: AppHandle, name: String) -> Result<(), AppError> {
     default_store()?.delete_category(&name)?;
     let _ = app.emit("notes-changed", ());
+    services::sync::request_auto_sync(&app);
     Ok(())
 }
 
@@ -138,6 +148,7 @@ fn notes_move_category(
 ) -> Result<NoteMetadata, AppError> {
     let result = default_store()?.move_note_to_category(&id, &category)?;
     let _ = app.emit("notes-changed", ());
+    services::sync::request_auto_sync(&app);
     Ok(result)
 }
 
@@ -165,7 +176,33 @@ fn config_save(app: AppHandle, config: AppConfig) -> Result<AppConfig, AppError>
         eprintln!("failed to refresh desktop shell state: {error}");
     }
     let _ = app.emit("config-changed", &saved);
+    services::sync::notify_auto_sync_config_changed(&app);
+    if saved.sync_enabled
+        && !saved.sync_server_url.trim().is_empty()
+        && !saved.sync_token.trim().is_empty()
+    {
+        services::sync::request_auto_sync(&app);
+    }
     Ok(saved)
+}
+
+#[tauri::command]
+fn sync_status() -> Result<SyncStatus, AppError> {
+    let store = default_store()?;
+    let config = store.load_config()?;
+    services::sync::status(&store, &config)
+}
+
+#[tauri::command]
+async fn sync_test_connection() -> Result<SyncStatus, AppError> {
+    let store = default_store()?;
+    let config = store.load_config()?;
+    services::sync::test_connection(&store, &config).await
+}
+
+#[tauri::command]
+async fn sync_now(app: AppHandle) -> Result<SyncStatus, AppError> {
+    services::sync::sync_now_for_app(&app).await
 }
 
 #[tauri::command]
@@ -211,6 +248,7 @@ pub fn run() {
         }))
         .setup(|app| {
             desktop::setup_desktop(app)?;
+            services::sync::setup_auto_sync(app.handle());
             Ok(())
         })
         .on_window_event(desktop::handle_window_event)
@@ -233,6 +271,9 @@ pub fn run() {
             categories_delete,
             config_get,
             config_save,
+            sync_status,
+            sync_test_connection,
+            sync_now,
             open_notepad_window,
             recycle_notepad_window,
             open_tile_window,

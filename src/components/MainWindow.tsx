@@ -13,6 +13,8 @@ import {
 } from "../features/settings/api";
 import type { AppConfig, ViewMode } from "../features/settings/types";
 import { normalizeTileColor } from "../features/settings/tileColor";
+import { getSyncStatus, syncNow, testSyncConnection } from "../features/sync/api";
+import type { SyncStatus } from "../features/sync/types";
 import { SettingsPanel } from "./SettingsPanel";
 import { SlidingButtonGroup } from "./SlidingButtonGroup";
 import {
@@ -56,6 +58,38 @@ import {
 } from "../features/windows/controls";
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
+
+export type NoteRefreshAction =
+  | { type: "keep" }
+  | { type: "clear" }
+  | { type: "load"; noteId: string };
+
+export function resolveNoteRefreshAction(
+  loadedNotes: NoteMetadata[],
+  options: {
+    selectedId: string | null;
+    isExternal: boolean;
+    saveState: SaveState;
+    selectedUpdatedAt?: string | null;
+  },
+): NoteRefreshAction {
+  const { selectedId, isExternal, saveState, selectedUpdatedAt } = options;
+
+  if (!selectedId || isExternal) {
+    return { type: "keep" };
+  }
+
+  const selectedMetadata = loadedNotes.find((note) => note.id === selectedId);
+  if (!selectedMetadata) {
+    return loadedNotes[0] ? { type: "load", noteId: loadedNotes[0].id } : { type: "clear" };
+  }
+
+  if (saveState !== "dirty" && selectedMetadata.updatedAt !== selectedUpdatedAt) {
+    return { type: "load", noteId: selectedId };
+  }
+
+  return { type: "keep" };
+}
 
 interface NoteMenuState {
   x: number;
@@ -287,6 +321,12 @@ export function MainWindow({
   const [savedNotesDir, setSavedNotesDir] = useState<string | null>(
     initialConfig?.notesDir ?? null,
   );
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+  const [syncFeedback, setSyncFeedback] = useState<{
+    tone: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
   const [noteTransitionKey, setNoteTransitionKey] = useState(0);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteExiting, setDeleteExiting] = useState(false);
@@ -423,7 +463,7 @@ export function MainWindow({
     [t],
   );
 
-  const filteredNotes = useMemo(() => filterNotes(notes, searchQuery), [notes, searchQuery]);
+  const filteredNotes = useMemo(() => filterNotes(notes, searchQuery, t), [notes, searchQuery, t]);
 
   const categoryGroups = useMemo(
     () => groupNotesByCategory(filteredNotes, categories),
@@ -481,6 +521,27 @@ export function MainWindow({
     setSaveState("idle");
   }, []);
 
+  const applySelectedNoteRefresh = useCallback(
+    async (loadedNotes: NoteMetadata[]) => {
+      const action = resolveNoteRefreshAction(loadedNotes, {
+        selectedId,
+        isExternal,
+        saveState,
+        selectedUpdatedAt: selectedNote?.updatedAt ?? null,
+      });
+
+      if (action.type === "load") {
+        await loadNote(action.noteId);
+        return;
+      }
+
+      if (action.type === "clear") {
+        clearCurrentNote();
+      }
+    },
+    [clearCurrentNote, isExternal, loadNote, saveState, selectedId, selectedNote?.updatedAt],
+  );
+
   const loadExternalFile = useCallback(async (filePath: string) => {
     setErrorMessage(null);
     try {
@@ -522,14 +583,16 @@ export function MainWindow({
     async function bootstrap() {
       setIsLoading(true);
       try {
-        const [loadedConfig, loadedNotes, loadedCategories] = await Promise.all([
+        const [loadedConfig, loadedNotes, loadedCategories, loadedSyncStatus] = await Promise.all([
           getConfig(),
           listNotes(),
           listCategories(),
+          getSyncStatus(),
         ]);
         if (cancelled) return;
         setSettingsConfig(loadedConfig);
         setSavedNotesDir(loadedConfig.notesDir);
+        setSyncStatus(loadedSyncStatus);
         setViewMode(normalizeViewMode(loadedConfig.defaultViewMode));
         setNotes(loadedNotes);
         setCategories(loadedCategories);
@@ -555,20 +618,21 @@ export function MainWindow({
 
   useEffect(() => {
     const unlisten = listen("notes-changed", () => {
-      void refreshNotes().then((loaded) => {
-        if (selectedId && !loaded.some((n) => n.id === selectedId)) {
-          if (loaded[0]) {
-            void loadNote(loaded[0].id);
-          } else {
-            clearCurrentNote();
-          }
-        }
-      });
+      void refreshNotes().then((loaded) => applySelectedNoteRefresh(loaded));
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [refreshNotes, selectedId, loadNote, clearCurrentNote]);
+  }, [applySelectedNoteRefresh, refreshNotes]);
+
+  useEffect(() => {
+    const unlisten = listen<SyncStatus>("sync-status-changed", (event) => {
+      setSyncStatus(event.payload);
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
 
   useEffect(() => {
     const unlisten = listen<string>("open-external-file", (event) => {
@@ -815,6 +879,57 @@ export function MainWindow({
   const handleCloseSettings = useCallback(() => {
     setSettingsOpen(false);
   }, []);
+
+  const runManualSync = useCallback(async () => {
+    setSyncBusy(true);
+    setErrorMessage(null);
+    setSyncFeedback(null);
+    try {
+      if (saveState === "dirty") {
+        const saved = await saveCurrentNote();
+        if (!saved) return;
+      }
+      const status = await syncNow();
+      setSyncStatus(status);
+      setSyncFeedback({
+        tone: "success",
+        message: status.lastSyncAt
+          ? t("main.sync.feedback.syncCompleteAt", {
+              time: new Date(status.lastSyncAt).toLocaleString(),
+            })
+          : t("main.sync.feedback.syncComplete"),
+      });
+      const loadedNotes = await refreshNotes();
+      await applySelectedNoteRefresh(loadedNotes);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      setSyncFeedback(null);
+      const status = await getSyncStatus().catch(() => null);
+      if (status) setSyncStatus(status);
+    } finally {
+      setSyncBusy(false);
+    }
+  }, [applySelectedNoteRefresh, refreshNotes, saveCurrentNote, saveState, t]);
+
+  const runSyncConnectionTest = useCallback(async () => {
+    setSyncBusy(true);
+    setErrorMessage(null);
+    setSyncFeedback(null);
+    try {
+      setSyncStatus(await testSyncConnection());
+      setSyncFeedback({
+        tone: "success",
+        message: t("main.sync.feedback.connectionSuccess"),
+      });
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      setSyncFeedback(null);
+      const status = await getSyncStatus().catch(() => null);
+      if (status) setSyncStatus(status);
+    } finally {
+      setSyncBusy(false);
+    }
+  }, [t]);
 
   const handleImportNote = async () => {
     setErrorMessage(null);
@@ -2145,6 +2260,11 @@ export function MainWindow({
                   onChange={handleSettingsChange}
                   onChooseNotesDir={() => void handleChooseNotesDir()}
                   onClose={handleCloseSettings}
+                  syncStatus={syncStatus}
+                  syncFeedback={syncFeedback}
+                  syncBusy={syncBusy}
+                  onSyncNow={() => void runManualSync()}
+                  onTestSyncConnection={() => void runSyncConnectionTest()}
                 />
               </div>
             </div>

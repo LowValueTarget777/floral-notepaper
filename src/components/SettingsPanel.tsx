@@ -9,6 +9,7 @@ import {
 } from "../features/settings/shortcutRecorder";
 import { DEFAULT_TILE_COLOR, normalizeTileColor } from "../features/settings/tileColor";
 import { applyTheme, watchSystemTheme } from "../features/settings/theme";
+import type { SyncStatus } from "../features/sync/types";
 import { SUPPORTED_LOCALES } from "../locales/locale-whitelist";
 import { SlidingButtonGroup } from "./SlidingButtonGroup";
 
@@ -17,9 +18,24 @@ interface SettingsPanelProps {
   onChange: (config: AppConfig) => void;
   onChooseNotesDir: () => void;
   onClose: () => void;
+  syncStatus?: SyncStatus | null;
+  syncFeedback?: { tone: "success" | "error"; message: string } | null;
+  syncBusy?: boolean;
+  onSyncNow: () => void;
+  onTestSyncConnection: () => void;
 }
 
-export function SettingsPanel({ config, onChange, onChooseNotesDir, onClose }: SettingsPanelProps) {
+export function SettingsPanel({
+  config,
+  onChange,
+  onChooseNotesDir,
+  onClose,
+  syncStatus = null,
+  syncFeedback = null,
+  syncBusy = false,
+  onSyncNow,
+  onTestSyncConnection,
+}: SettingsPanelProps) {
   const { t } = useTranslation();
   const setConfigValue = <Key extends keyof AppConfig>(key: Key, value: AppConfig[Key]) => {
     onChange({ ...config, [key]: value });
@@ -72,6 +88,26 @@ export function SettingsPanel({ config, onChange, onChooseNotesDir, onClose }: S
       })),
     [t],
   );
+  const syncStatusLabel = useMemo(() => {
+    if (syncFeedback?.tone === "success" && !syncStatus?.lastSyncAt) {
+      return t("settings.sync.status.connectionSuccess");
+    }
+    if (!syncStatus) {
+      return t("settings.sync.status.notSynced");
+    }
+    if (syncStatus.lastError) {
+      return t("settings.sync.status.failed");
+    }
+    if (syncStatus.lastSyncAt) {
+      return t("settings.sync.status.syncedAt", {
+        time: new Date(syncStatus.lastSyncAt).toLocaleString(),
+      });
+    }
+    if (syncStatus.configured) {
+      return t("settings.sync.status.pending");
+    }
+    return t("settings.sync.status.notConfigured");
+  }, [syncFeedback?.tone, syncStatus, t]);
 
   return (
     <aside className="w-[360px] h-full shrink-0 border-l border-paper-deep/30 bg-cloud/92 backdrop-blur-sm flex flex-col">
@@ -113,6 +149,78 @@ export function SettingsPanel({ config, onChange, onChooseNotesDir, onClose }: S
               watchSystemTheme(v);
             }}
           />
+        </section>
+
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="block text-[11px] font-body text-ink-faint">
+              {t("settings.sync.label")}
+            </label>
+            <span className="text-[10px] text-ink-ghost font-mono">{syncStatusLabel}</span>
+          </div>
+          <ToggleRow
+            label={t("settings.sync.enable")}
+            checked={config.syncEnabled}
+            onChange={(checked) => setConfigValue("syncEnabled", checked)}
+          />
+          <label htmlFor="sync-server-url" className="block text-[11px] font-body text-ink-faint">
+            {t("settings.sync.serverUrl")}
+          </label>
+          <input
+            id="sync-server-url"
+            type="url"
+            value={config.syncServerUrl}
+            onChange={(event) => setConfigValue("syncServerUrl", event.target.value)}
+            placeholder={t("settings.sync.serverUrlPlaceholder")}
+            spellCheck={false}
+            aria-describedby="sync-server-url-help"
+            className="w-full h-8 px-2.5 rounded-lg bg-paper-warm/70 border border-paper-deep/40 text-[12px] font-mono text-ink-soft outline-none"
+          />
+          <p id="sync-server-url-help" className="text-[10px] text-ink-ghost leading-relaxed">
+            {t("settings.sync.serverUrlHelp")}
+          </p>
+          <label htmlFor="sync-token" className="block text-[11px] font-body text-ink-faint">
+            {t("settings.sync.token")}
+          </label>
+          <input
+            id="sync-token"
+            type="password"
+            value={config.syncToken}
+            onChange={(event) => setConfigValue("syncToken", event.target.value)}
+            placeholder={t("settings.sync.tokenPlaceholder")}
+            spellCheck={false}
+            className="w-full h-8 px-2.5 rounded-lg bg-paper-warm/70 border border-paper-deep/40 text-[12px] font-mono text-ink-soft outline-none"
+          />
+          {syncStatus?.lastError && (
+            <p className="text-[11px] text-red-400 leading-relaxed">{syncStatus.lastError}</p>
+          )}
+          {syncFeedback && !syncStatus?.lastError && (
+            <p
+              className={`text-[11px] leading-relaxed ${
+                syncFeedback.tone === "success" ? "text-bamboo" : "text-red-400"
+              }`}
+            >
+              {syncFeedback.message}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onTestSyncConnection}
+              disabled={syncBusy || !config.syncServerUrl.trim() || !config.syncToken.trim()}
+              className="h-8 px-3 rounded-lg border border-paper-deep/45 text-[11px] text-ink-faint hover:text-bamboo hover:bg-bamboo-mist/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {t("settings.sync.testConnection")}
+            </button>
+            <button
+              type="button"
+              onClick={onSyncNow}
+              disabled={syncBusy || !config.syncServerUrl.trim() || !config.syncToken.trim()}
+              className="h-8 px-3 rounded-lg border border-paper-deep/45 text-[11px] text-ink-faint hover:text-bamboo hover:bg-bamboo-mist/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {t("settings.sync.syncNow")}
+            </button>
+          </div>
         </section>
 
         <section className="space-y-2">
