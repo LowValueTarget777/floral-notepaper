@@ -2450,6 +2450,7 @@ mod tests {
             while index < responses.len() && started_at.elapsed() < Duration::from_secs(2) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        stream.set_nonblocking(false).ok();
                         let mut buffer = [0_u8; 4096];
                         let read = stream.read(&mut buffer).expect("read request");
                         requests.push(String::from_utf8_lossy(&buffer[..read]).to_string());
@@ -3044,6 +3045,7 @@ mod tests {
             while requests.is_empty() && started_at.elapsed() < Duration::from_secs(2) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        stream.set_nonblocking(false).ok();
                         let mut buffer = [0_u8; 4096];
                         let read = stream.read(&mut buffer).expect("read request");
                         requests.push(String::from_utf8_lossy(&buffer[..read]).to_string());
