@@ -297,6 +297,13 @@ impl From<StoredAppConfig> for AppConfig {
                 decrypt_sync_password(&stored.sync_webdav_password_encrypted)
             },
             sync_interval_seconds: normalize_sync_interval_seconds(stored.sync_interval_seconds),
+            background_image_path: String::new(),
+            background_fit: default_background_fit(),
+            background_dim: default_background_dim(),
+            background_blur: default_background_blur(),
+            background_scale: default_background_scale(),
+            background_position_x: default_background_position(),
+            background_position_y: default_background_position(),
         }
     }
 }
